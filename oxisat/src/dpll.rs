@@ -93,6 +93,7 @@ impl Clause {
     /// Adds a literal to the clause.
     ///
     /// Returns `false` if there is already a literal with this variable within this clause.
+    #[must_use]
     pub fn add_literal_checked(&mut self, literal: Literal) -> bool {
         if self.contains_variable(literal.variable()) {
             false
@@ -110,6 +111,7 @@ impl Clause {
     /// Adds a literal to the clause.
     ///
     /// Returns `false` if there is already a literal with this variable within this clause.
+    #[must_use]
     pub fn add_variable_checked(&mut self, variable: Variable, value: bool) -> bool {
         if self.contains_variable(variable) {
             false
@@ -176,8 +178,13 @@ pub fn solve(cnf: &CNF) -> Solution {
     {
         Some(max) => max,
         None => {
-            // Empty CNF with no variables
-            return Solution::Satisfiable(Vec::new());
+            // CNF with no variables
+            return if cnf.clauses.is_empty() {
+                Solution::Satisfiable(Vec::new())
+            } else {
+                // There is an empty clause, which is unsatisfiable.
+                Solution::Unsatisfiable
+            };
         }
     };
 
@@ -391,5 +398,63 @@ impl State {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn three_variables_sat() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(3), false);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(3), true);
+        clause.add_variable(Variable::new(4), false);
+        cnf.add_clause(clause);
+
+        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn empty_sat() {
+        let cnf = CNF::new();
+
+        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn empty_clause_unsat() {
+        let mut cnf = CNF::new();
+        let mut clause = Clause::new();
+        cnf.add_clause(clause);
+
+        assert!(matches!(solve(&cnf), Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn two_clause_unsat() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        assert!(matches!(solve(&cnf), Solution::Unsatisfiable));
     }
 }
