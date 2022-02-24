@@ -111,6 +111,14 @@ impl Literal {
     }
 }
 
+impl std::ops::Not for Literal {
+    type Output = Literal;
+
+    fn not(self) -> Self::Output {
+        self.negated()
+    }
+}
+
 impl Clause {
     /// Creates a new empty clause.
     pub fn new() -> Self {
@@ -371,7 +379,7 @@ impl State {
                 },
             );
 
-            let new_literal_negated = new_literal.negated();
+            let new_literal_negated = !new_literal;
 
             // We need to manually maintain the current clause index and the maximum as we will
             // be modifying the clause Vec while iterating through it.
