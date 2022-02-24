@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 oxisat = { path = "../oxisat" }
+anyhow = "1.0.55"
+nom = "7.1.0"

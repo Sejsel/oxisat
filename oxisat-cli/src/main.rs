@@ -1,35 +1,53 @@
+use anyhow::anyhow;
+use nom::Finish;
 use oxisat::dpll;
-use oxisat::dpll::{Clause, CNF, Solution, Variable, VariableState};
+use oxisat::dpll::{Solution, VariableState, CNF};
+use std::env;
+use std::fs::File;
+use std::io::{stdin, Read};
 
-fn main() {
-    let mut cnf = CNF::new();
+fn main() -> anyhow::Result<()> {
+    let args: Vec<_> = env::args().collect();
 
-    let mut clause = Clause::new();
-    clause.add_variable_checked(Variable::new(1), false);
-    clause.add_variable_checked(Variable::new(2), true);
-    cnf.add_clause(clause);
+    let mut input = String::new();
+    if let Some(path) = args.get(1) {
+        // TODO: Better error handling
+        let mut f = File::open(path).expect("Failed to open provided file");
+        f.read_to_string(&mut input).expect("Failed to read provided file");
+    } else {
+        stdin().read_to_string(&mut input)?;
+    }
 
-    let mut clause = Clause::new();
-    clause.add_variable_checked(Variable::new(2), false);
-    clause.add_variable_checked(Variable::new(3), false);
-    cnf.add_clause(clause);
+    let dimacs = match oxisat::dimacs::parse(&input).finish() {
+        Ok((_, dimacs)) => dimacs,
+        Err(err) => {
+            return Err(anyhow!(
+                "Failed to parse dimacs: {}",
+                nom::error::convert_error(input.as_str(), err)
+            ));
+        }
+    };
 
-    let mut clause = Clause::new();
-    clause.add_variable_checked(Variable::new(3), true);
-    clause.add_variable_checked(Variable::new(4), false);
-    cnf.add_clause(clause);
+    let cnf: CNF = dimacs.into();
 
     match dpll::solve(&cnf) {
         Solution::Satisfiable(variables) => {
-            println!("SAT");
-            for (i, state) in variables.iter().enumerate().skip(1) {
-                println!("{i} {}", match state {
-                    VariableState::Unset => "?",
-                    VariableState::True => "true",
-                    VariableState::False => "false",
-                });
-            }
+            println!("s SATISFIABLE");
+            let values: Vec<_> = variables
+                .iter()
+                .enumerate()
+                .skip(1)
+                .filter(|(_, &state)| state != VariableState::Unset)
+                .map(|(i, state)| match state {
+                    VariableState::True => format!("{i}"),
+                    VariableState::False => format!("-{i}"),
+                    VariableState::Unset => unreachable!(),
+                })
+                .collect();
+            println!("v {} 0", values.join(" "));
         }
-        Solution::Unsatisfiable => println!("UNSAT")
+        Solution::Unsatisfiable => println!("s UNSATISFIABLE"),
     }
+
+    Ok(())
 }

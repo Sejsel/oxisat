@@ -1,3 +1,6 @@
+use crate::dimacs;
+use crate::dimacs::Dimacs;
+
 /// The underlying type that is used to handle variables.
 /// This is a signed integer type.
 type VariableType = i32;
@@ -24,6 +27,37 @@ pub struct Clause {
 #[derive(Clone)]
 pub struct CNF {
     clauses: Vec<Clause>,
+}
+
+impl From<Dimacs> for CNF {
+    fn from(dimacs: Dimacs) -> Self {
+        let mut cnf = CNF::new();
+
+        for dimacs_clause in dimacs.clauses() {
+            let mut clause = Clause::new();
+
+            for literal in dimacs_clause.literals() {
+                clause.add_literal(match literal {
+                    dimacs::Literal::Positive(variable) => Literal::new(
+                        Variable((*variable).try_into().expect(
+                            "Variable index does not fit into the range of the underlying type",
+                        )),
+                        true,
+                    ),
+                    dimacs::Literal::Negative(variable) => Literal::new(
+                        Variable((*variable).try_into().expect(
+                            "Variable index does not fit into the range of the underlying type",
+                        )),
+                        false,
+                    ),
+                });
+            }
+
+            cnf.add_clause(clause);
+        }
+
+        cnf
+    }
 }
 
 impl Variable {
@@ -191,7 +225,7 @@ pub fn solve(cnf: &CNF) -> Solution {
     let mut state = State::new(max_variable, cnf.clone());
     match dpll(&mut state) {
         BranchOutcome::Satisfiable(variables) => Solution::Satisfiable(variables),
-        BranchOutcome::Unsatisfiable => Solution::Unsatisfiable
+        BranchOutcome::Unsatisfiable => Solution::Unsatisfiable,
     }
 }
 
