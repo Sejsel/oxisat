@@ -197,7 +197,7 @@ pub enum Solution {
     Unsatisfiable,
 }
 
-pub fn solve(cnf: &CNF) -> Solution {
+pub fn solve<TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
     let max_variable = match cnf
         .clauses
         .iter()
@@ -208,18 +208,18 @@ pub fn solve(cnf: &CNF) -> Solution {
         None => {
             // CNF with no variables
             return if cnf.clauses.is_empty() {
-                Solution::Satisfiable(Vec::new())
+                (Solution::Satisfiable(Vec::new()), Default::default())
             } else {
                 // There is an empty clause, which is unsatisfiable.
-                Solution::Unsatisfiable
+                (Solution::Unsatisfiable, Default::default())
             };
         }
     };
 
-    let mut state = State::new(max_variable, cnf.clone());
+    let mut state = State::<TStatistics>::new(max_variable, cnf.clone());
     match dpll(&mut state) {
-        BranchOutcome::Satisfiable(variables) => Solution::Satisfiable(variables),
-        BranchOutcome::Unsatisfiable => Solution::Unsatisfiable,
+        BranchOutcome::Satisfiable(variables) => (Solution::Satisfiable(variables), state.stats),
+        BranchOutcome::Unsatisfiable => (Solution::Unsatisfiable, state.stats),
     }
 }
 
@@ -237,7 +237,7 @@ impl BranchOutcome {
     }
 }
 
-fn dpll(state: &mut State) -> BranchOutcome {
+fn dpll<TStats: StatsStorage>(state: &mut State<TStats>) -> BranchOutcome {
     let propagation_result = unit_propagation(state);
 
     if propagation_result == UnitPropagationOutcome::Unsatisfiable {
@@ -278,7 +278,7 @@ enum UnitPropagationOutcome {
     Unsatisfiable,
 }
 
-fn unit_propagation(state: &mut State) -> UnitPropagationOutcome {
+fn unit_propagation<TStats: StatsStorage>(state: &mut State<TStats>) -> UnitPropagationOutcome {
     state.cnf_change_stack.push(CNFStackItem::UnitPropagation);
 
     loop {
@@ -291,6 +291,9 @@ fn unit_propagation(state: &mut State) -> UnitPropagationOutcome {
 
         if let Some(literal) = unit_literal {
             debug_assert!(*state.variable_state(literal.variable()) == VariableState::Unset);
+
+            state.stats.increment_unit_propagation_steps();
+
             if let SetVariableOutcome::Unsatisfiable =
                 state.set_variable(literal.variable(), literal.value().into())
             {
@@ -321,10 +324,50 @@ impl From<bool> for VariableState {
     }
 }
 
-struct State {
+pub trait StatsStorage: Default {
+    fn increment_decisions(&mut self);
+    fn increment_unit_propagation_steps(&mut self);
+}
+
+#[derive(Default)]
+pub struct NoStats;
+
+#[derive(Default)]
+pub struct Stats {
+    decisions: u64,
+    unit_propagation_steps: u64,
+}
+
+impl Stats {
+    pub fn decisions(&self) -> u64 {
+        self.decisions
+    }
+
+    pub fn unit_propagation_steps(&self) -> u64 {
+        self.unit_propagation_steps
+    }
+}
+
+impl StatsStorage for NoStats {
+    fn increment_decisions(&mut self) {}
+    fn increment_unit_propagation_steps(&mut self) {}
+}
+
+impl StatsStorage for Stats {
+    fn increment_decisions(&mut self) {
+        self.decisions += 1;
+    }
+
+    fn increment_unit_propagation_steps(&mut self) {
+        self.unit_propagation_steps += 1;
+    }
+}
+
+struct State<TStats: StatsStorage> {
     variables: Vec<VariableState>,
     cnf: CNF,
     cnf_change_stack: Vec<CNFStackItem>,
+    stats: TStats,
 }
 
 enum CNFStackItem {
@@ -375,13 +418,14 @@ enum SetVariableOutcome {
     Unsatisfiable,
 }
 
-impl State {
+impl<TStatistics: StatsStorage> State<TStatistics> {
     fn new(max_variable: Variable, cnf: CNF) -> Self {
         State {
             // We allocate one extra element to make indexing trivial.
             variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
             cnf,
             cnf_change_stack: Vec::new(),
+            stats: Default::default(),
         }
     }
 
@@ -443,6 +487,8 @@ impl State {
             previous_state: *variable_state,
         });
         *variable_state = state;
+
+        self.stats.increment_decisions();
 
         if state != VariableState::Unset {
             let new_literal = Literal::new(
@@ -546,7 +592,7 @@ mod tests {
         clause.add_variable(Variable::new(4), false);
         cnf.add_clause(clause);
 
-        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+        assert!(matches!(solve::<NoStats>(&cnf).0, Solution::Satisfiable(_)));
     }
 
     #[test]
@@ -567,14 +613,14 @@ mod tests {
         clause.add_variable(Variable::new(3), true);
         cnf.add_clause(clause);
 
-        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+        assert!(matches!(solve::<NoStats>(&cnf).0, Solution::Satisfiable(_)));
     }
 
     #[test]
     fn empty_sat() {
         let cnf = CNF::new();
 
-        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+        assert!(matches!(solve::<NoStats>(&cnf).0, Solution::Satisfiable(_)));
     }
 
     #[test]
@@ -583,7 +629,7 @@ mod tests {
         let clause = Clause::new();
         cnf.add_clause(clause);
 
-        assert!(matches!(solve(&cnf), Solution::Unsatisfiable));
+        assert!(matches!(solve::<NoStats>(&cnf).0, Solution::Unsatisfiable));
     }
 
     #[test]
@@ -598,6 +644,6 @@ mod tests {
         clause.add_variable(Variable::new(1), true);
         cnf.add_clause(clause);
 
-        assert!(matches!(solve(&cnf), Solution::Unsatisfiable));
+        assert!(matches!(solve::<NoStats>(&cnf).0, Solution::Unsatisfiable));
     }
 }

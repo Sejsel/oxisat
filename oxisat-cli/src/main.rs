@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use nom::Finish;
 use oxisat::dpll;
-use oxisat::dpll::{Solution, VariableState, CNF};
+use oxisat::dpll::{Solution, VariableState, CNF, NoStats, Stats};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
@@ -9,6 +9,8 @@ use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<_> = env::args().collect();
+
+    let collect_stats = true;
 
     let mut input = String::new();
     if let Some(path) = args.get(1) {
@@ -35,10 +37,23 @@ fn main() -> anyhow::Result<()> {
 
     let start_time = Instant::now();
 
-    let solution = dpll::solve(&cnf);
+    let (solution, stats) = if collect_stats {
+        let (solution, stats) = dpll::solve::<Stats>(&cnf);
+        (solution, Some(stats))
+    } else {
+        let (solution, _) = dpll::solve::<NoStats>(&cnf);
+        (solution, None)
+    };
 
     println!("c");
     println!("c Time spent: {:.7}s", start_time.elapsed().as_secs_f64());
+
+    if let Some(stats) = stats {
+        println!("c Decisions: {}", stats.decisions());
+        println!("c Unit propagation derivations: {}", stats.unit_propagation_steps());
+    } else {
+        println!("c Further stats were disabled.");
+    }
     println!("c");
 
     match solution {
