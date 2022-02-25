@@ -1,13 +1,14 @@
 use anyhow::anyhow;
+use clap::Parser;
+use colored::Colorize;
+use comfy_table::Table;
 use nom::Finish;
 use oxisat::dpll;
-use oxisat::dpll::{Solution, VariableState, CNF, NoStats, Stats};
+use oxisat::dpll::{NoStats, Solution, Stats, VariableState, CNF};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
-use clap::Parser;
-use colored::Colorize;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -27,7 +28,8 @@ fn main() -> anyhow::Result<()> {
     if let Some(path) = args.input_file {
         // TODO: Better error handling
         let mut f = File::open(path).expect("Failed to open provided file");
-        f.read_to_string(&mut input).expect("Failed to read provided file");
+        f.read_to_string(&mut input)
+            .expect("Failed to read provided file");
     } else {
         stdin().read_to_string(&mut input)?;
     }
@@ -42,7 +44,11 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    println!("c {} {}", "oxisat".bright_yellow(), env!("CARGO_PKG_VERSION"));
+    println!(
+        "c {} {}",
+        "oxisat".bright_yellow(),
+        env!("CARGO_PKG_VERSION")
+    );
 
     let cnf: CNF = dimacs.into();
 
@@ -56,14 +62,28 @@ fn main() -> anyhow::Result<()> {
         (solution, None)
     };
 
+    let elapsed_time = start_time.elapsed();
+
     println!("c");
-    println!("c Time spent: {:.7}s", start_time.elapsed().as_secs_f64());
+    let mut table = Table::new();
+    table.load_preset(comfy_table::presets::NOTHING);
+    table.add_row(vec![
+        "Time spent",
+        &format!("{:.7}s", elapsed_time.as_secs_f64()),
+    ]);
 
     if let Some(stats) = stats {
-        println!("c Decisions : {}", stats.decisions());
-        println!("c Unit propagation derivations: {}", stats.unit_propagation_steps());
+        table.add_row(vec!["Decisions", &stats.decisions().to_string()]);
+        table.add_row(vec![
+            "Unit propagation derivations",
+            &stats.unit_propagation_steps().to_string(),
+        ]);
     } else {
-        println!("c Further stats were disabled.");
+        table.add_row(vec!["Decisions", "not tracked"]);
+        table.add_row(vec!["Unit propagation derivations", "not tracked"]);
+    }
+    for line in table.lines() {
+        println!("c {line}");
     }
     println!("c");
 
