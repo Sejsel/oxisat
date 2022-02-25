@@ -88,13 +88,8 @@ impl Literal {
     }
 
     /// Returns `true` if the literal is true.
-    fn is_true(&self) -> bool {
+    fn value(&self) -> bool {
         self.0 > 0
-    }
-
-    /// Returns `true` if the literal is negated.
-    fn is_false(&self) -> bool {
-        self.0 < 0
     }
 
     /// Returns the variable of the literal.
@@ -167,10 +162,6 @@ impl Clause {
         self.literals.iter().any(|x| x.variable() == variable)
     }
 
-    fn literals(&self) -> &Vec<Literal> {
-        &self.literals
-    }
-
     fn is_empty(&self) -> bool {
         self.literals.is_empty()
     }
@@ -193,11 +184,6 @@ impl CNF {
     /// Returns `true` if this CNF is satisfied (i.e. contains no clauses).
     fn is_satisfied(&self) -> bool {
         self.clauses.is_empty()
-    }
-
-    /// Returns the clauses of the CNF.
-    fn clauses(&self) -> &Vec<Clause> {
-        &self.clauses
     }
 
     /// Returns `true` if this CNF cannot be satisfied (i.e. contains an empty clause)
@@ -306,7 +292,7 @@ fn unit_propagation(state: &mut State) -> UnitPropagationOutcome {
         if let Some(literal) = unit_literal {
             debug_assert!(*state.variable_state(literal.variable()) == VariableState::Unset);
             if let SetVariableOutcome::Unsatisfiable =
-                state.set_variable(literal.variable(), literal.is_true().into())
+                state.set_variable(literal.variable(), literal.value().into())
             {
                 return UnitPropagationOutcome::Unsatisfiable;
             }
@@ -447,10 +433,6 @@ impl State {
 
     fn variable_state(&self, variable: Variable) -> &VariableState {
         &self.variables[variable.number() as usize]
-    }
-
-    fn variable_state_mut(&mut self, variable: Variable) -> &mut VariableState {
-        &mut self.variables[variable.number() as usize]
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
