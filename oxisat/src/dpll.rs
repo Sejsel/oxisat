@@ -242,10 +242,23 @@ enum BranchOutcome {
     Unsatisfiable,
 }
 
-fn dpll(state: &mut State) -> BranchOutcome {
-    unit_propagation(state);
+impl BranchOutcome {
+    fn is_satisfiable(&self) -> bool {
+        match self {
+            BranchOutcome::Satisfiable(_) => true,
+            BranchOutcome::Unsatisfiable => false,
+        }
+    }
+}
 
-    // TODO: Return these results from unit propagation instead of having to compute them separately
+fn dpll(state: &mut State) -> BranchOutcome {
+    let propagation_result = unit_propagation(state);
+
+    if propagation_result == UnitPropagationOutcome::Unsatisfiable {
+        state.undo_last_unit_propagation();
+        return BranchOutcome::Unsatisfiable;
+    }
+
     if state.cnf.is_satisfied() {
         return BranchOutcome::Satisfiable(state.variables.clone());
     }
@@ -257,26 +270,29 @@ fn dpll(state: &mut State) -> BranchOutcome {
     // The unsatisfiability check above should ensure there is an unset variable.
     let next_variable = state.first_unset_variable().unwrap();
 
-    state.set_variable(next_variable, VariableState::True);
-    let outcome = dpll(state);
-    if matches!(outcome, BranchOutcome::Satisfiable(_)) {
-        return outcome;
+    for variable_state in [VariableState::True, VariableState::False] {
+        if state.set_variable(next_variable, variable_state) == SetVariableOutcome::Ok {
+            let outcome = dpll(state);
+            if outcome.is_satisfiable() {
+                return outcome;
+            }
+        }
+        state.undo_last_set_variable();
     }
-    state.undo_last_set_variable();
-
-    state.set_variable(next_variable, VariableState::False);
-    let outcome = dpll(state);
-    if matches!(outcome, BranchOutcome::Satisfiable(_)) {
-        return outcome;
-    }
-    state.undo_last_set_variable();
 
     state.undo_last_unit_propagation();
 
     BranchOutcome::Unsatisfiable
 }
 
-fn unit_propagation(state: &mut State) {
+#[must_use]
+#[derive(Eq, PartialEq, Debug)]
+enum UnitPropagationOutcome {
+    Finished,
+    Unsatisfiable,
+}
+
+fn unit_propagation(state: &mut State) -> UnitPropagationOutcome {
     state.cnf_change_stack.push(CNFStackItem::UnitPropagation);
 
     loop {
@@ -289,12 +305,17 @@ fn unit_propagation(state: &mut State) {
 
         if let Some(literal) = unit_literal {
             debug_assert!(*state.variable_state(literal.variable()) == VariableState::Unset);
-            // TODO: Early identification of empty clauses
-            state.set_variable(literal.variable(), literal.is_true().into());
+            if let SetVariableOutcome::Unsatisfiable =
+                state.set_variable(literal.variable(), literal.is_true().into())
+            {
+                return UnitPropagationOutcome::Unsatisfiable;
+            }
         } else {
             break;
         }
     }
+
+    UnitPropagationOutcome::Finished
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -361,6 +382,13 @@ impl CNFChange {
     }
 }
 
+#[must_use]
+#[derive(Eq, PartialEq, Debug)]
+enum SetVariableOutcome {
+    Ok,
+    Unsatisfiable,
+}
+
 impl State {
     fn new(max_variable: Variable, cnf: CNF) -> Self {
         State {
@@ -425,7 +453,7 @@ impl State {
         &mut self.variables[variable.number() as usize]
     }
 
-    fn set_variable(&mut self, variable: Variable, state: VariableState) {
+    fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
         let variable_state = &mut self.variables[variable.number() as usize];
 
         self.cnf_change_stack.push(CNFStackItem::SetVariable {
@@ -488,8 +516,11 @@ impl State {
                     }
                     LiteralSearchResult::FoundNegated(literal_index) => {
                         // Negation found; only this single literal is removed.
-                        // If the clause becomes empty, it is left that way.
                         let clause = &mut self.cnf.clauses[clause_i];
+                        if clause.literals.len() == 1 {
+                            // If the clause becomes empty, we report it.
+                            return SetVariableOutcome::Unsatisfiable;
+                        }
                         clause.literals.swap_remove(literal_index);
                         self.cnf_change_stack.push(CNFStackItem::Change(
                             CNFChange::RemoveLiteral {
@@ -505,6 +536,8 @@ impl State {
                 }
             }
         }
+
+        SetVariableOutcome::Ok
     }
 }
 
