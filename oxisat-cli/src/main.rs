@@ -5,6 +5,7 @@ use oxisat::dpll::{Solution, VariableState, CNF};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
+use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<_> = env::args().collect();
@@ -28,9 +29,19 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    println!("c oxisat {}", env!("CARGO_PKG_VERSION"));
+
     let cnf: CNF = dimacs.into();
 
-    match dpll::solve(&cnf) {
+    let start_time = Instant::now();
+
+    let solution = dpll::solve(&cnf);
+
+    println!("c");
+    println!("c Time spent: {:.7}s", start_time.elapsed().as_secs_f64());
+    println!("c");
+
+    match solution {
         Solution::Satisfiable(variables) => {
             println!("s SATISFIABLE");
             let values: Vec<_> = variables
