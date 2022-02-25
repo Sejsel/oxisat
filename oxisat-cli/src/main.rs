@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
 use clap::Parser;
+use colored::Colorize;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -41,7 +42,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    println!("c oxisat {}", env!("CARGO_PKG_VERSION"));
+    println!("c {} {}", "oxisat".bright_yellow(), env!("CARGO_PKG_VERSION"));
 
     let cnf: CNF = dimacs.into();
 
@@ -59,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     println!("c Time spent: {:.7}s", start_time.elapsed().as_secs_f64());
 
     if let Some(stats) = stats {
-        println!("c Decisions: {}", stats.decisions());
+        println!("c Decisions : {}", stats.decisions());
         println!("c Unit propagation derivations: {}", stats.unit_propagation_steps());
     } else {
         println!("c Further stats were disabled.");
@@ -68,7 +69,7 @@ fn main() -> anyhow::Result<()> {
 
     match solution {
         Solution::Satisfiable(variables) => {
-            println!("s SATISFIABLE");
+            println!("s {}", "SATISFIABLE".green());
             let values: Vec<_> = variables
                 .iter()
                 .enumerate()
@@ -82,7 +83,7 @@ fn main() -> anyhow::Result<()> {
                 .collect();
             println!("v {} 0", values.join(" "));
         }
-        Solution::Unsatisfiable => println!("s UNSATISFIABLE"),
+        Solution::Unsatisfiable => println!("s {}", "UNSATISFIABLE".red()),
     }
 
     Ok(())
