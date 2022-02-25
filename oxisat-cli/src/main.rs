@@ -6,14 +6,24 @@ use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+#[clap(version)]
+struct Args {
+    /// Do not calculate detailed stats; CPU time is still measured.
+    #[clap(short, long)]
+    no_stats: bool,
+
+    #[clap(group = "input")]
+    input_file: Option<String>,
+}
 
 fn main() -> anyhow::Result<()> {
-    let args: Vec<_> = env::args().collect();
-
-    let collect_stats = true;
+    let args = Args::parse();
 
     let mut input = String::new();
-    if let Some(path) = args.get(1) {
+    if let Some(path) = args.input_file {
         // TODO: Better error handling
         let mut f = File::open(path).expect("Failed to open provided file");
         f.read_to_string(&mut input).expect("Failed to read provided file");
@@ -37,7 +47,7 @@ fn main() -> anyhow::Result<()> {
 
     let start_time = Instant::now();
 
-    let (solution, stats) = if collect_stats {
+    let (solution, stats) = if !args.no_stats {
         let (solution, stats) = dpll::solve::<Stats>(&cnf);
         (solution, Some(stats))
     } else {

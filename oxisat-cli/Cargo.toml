@@ -9,3 +9,4 @@ edition = "2021"
 oxisat = { path = "../oxisat" }
 anyhow = "1.0.55"
 nom = "7.1.0"
+clap = { version = "3.1.2", features = ["derive"] }
