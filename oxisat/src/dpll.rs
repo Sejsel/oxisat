@@ -18,13 +18,13 @@ pub struct Variable(VariableType);
 pub struct Literal(VariableType);
 
 /// Represents a CNF clause (a disjunction of literals).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Clause {
     literals: Vec<Literal>,
 }
 
 /// Represents a formula in a Conjunctive normal form (a conjunction of disjunction clauses).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CNF {
     clauses: Vec<Clause>,
 }
@@ -192,7 +192,7 @@ impl CNF {
 
     /// Returns `true` if this CNF is satisfied (i.e. contains no clauses).
     fn is_satisfied(&self) -> bool {
-        self.clauses.len() == 0
+        self.clauses.is_empty()
     }
 
     /// Returns the clauses of the CNF.
@@ -243,13 +243,14 @@ enum BranchOutcome {
 }
 
 fn dpll(state: &mut State) -> BranchOutcome {
-    // TODO: Unit propagation
+    unit_propagation(state);
 
     // TODO: Return these results from unit propagation instead of having to compute them separately
     if state.cnf.is_satisfied() {
         return BranchOutcome::Satisfiable(state.variables.clone());
     }
     if state.cnf.is_unsatisfiable() {
+        state.undo_last_unit_propagation();
         return BranchOutcome::Unsatisfiable;
     }
 
@@ -270,7 +271,30 @@ fn dpll(state: &mut State) -> BranchOutcome {
     }
     state.undo_last_set_variable();
 
+    state.undo_last_unit_propagation();
+
     BranchOutcome::Unsatisfiable
+}
+
+fn unit_propagation(state: &mut State) {
+    state.cnf_change_stack.push(CNFStackItem::UnitPropagation);
+
+    loop {
+        let unit_literal = state
+            .cnf
+            .clauses
+            .iter()
+            .find(|clause| clause.literals.len() == 1)
+            .map(|clause| clause.literals[0]);
+
+        if let Some(literal) = unit_literal {
+            debug_assert!(*state.variable_state(literal.variable()) == VariableState::Unset);
+            // TODO: Early identification of empty clauses
+            state.set_variable(literal.variable(), literal.is_true().into());
+        } else {
+            break;
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -280,6 +304,16 @@ pub enum VariableState {
     False,
 }
 
+impl From<bool> for VariableState {
+    fn from(value: bool) -> Self {
+        if value {
+            VariableState::True
+        } else {
+            VariableState::False
+        }
+    }
+}
+
 struct State {
     variables: Vec<VariableState>,
     cnf: CNF,
@@ -287,6 +321,7 @@ struct State {
 }
 
 enum CNFStackItem {
+    UnitPropagation,
     SetVariable {
         variable: Variable,
         previous_state: VariableState,
@@ -345,6 +380,24 @@ impl State {
             .map(|(i, _)| Variable::new(i as VariableType))
     }
 
+    fn undo_last_unit_propagation(&mut self) {
+        loop {
+            match self.cnf_change_stack.pop() {
+                Some(CNFStackItem::UnitPropagation) => {
+                    break;
+                }
+                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf),
+                Some(CNFStackItem::SetVariable {
+                    variable,
+                    previous_state,
+                }) => {
+                    self.variables[variable.number() as usize] = previous_state;
+                }
+                None => panic!("Undoing a unit propagation that did not happen"),
+            }
+        }
+    }
+
     fn undo_last_set_variable(&mut self) {
         loop {
             match self.cnf_change_stack.pop() {
@@ -357,12 +410,24 @@ impl State {
                     break;
                 }
                 None => panic!("Undoing a variable that has not been set"),
+                Some(CNFStackItem::UnitPropagation) => {
+                    panic!("Undoing across a unit propagation boundary")
+                }
             }
         }
     }
 
+    fn variable_state(&self, variable: Variable) -> &VariableState {
+        &self.variables[variable.number() as usize]
+    }
+
+    fn variable_state_mut(&mut self, variable: Variable) -> &mut VariableState {
+        &mut self.variables[variable.number() as usize]
+    }
+
     fn set_variable(&mut self, variable: Variable, state: VariableState) {
         let variable_state = &mut self.variables[variable.number() as usize];
+
         self.cnf_change_stack.push(CNFStackItem::SetVariable {
             variable,
             previous_state: *variable_state,
@@ -470,6 +535,27 @@ mod tests {
     }
 
     #[test]
+    fn three_variables_unit_propagation_sat() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(3), true);
+        cnf.add_clause(clause);
+
+        assert!(matches!(solve(&cnf), Solution::Satisfiable(_)));
+    }
+
+    #[test]
     fn empty_sat() {
         let cnf = CNF::new();
 
@@ -479,14 +565,14 @@ mod tests {
     #[test]
     fn empty_clause_unsat() {
         let mut cnf = CNF::new();
-        let mut clause = Clause::new();
+        let clause = Clause::new();
         cnf.add_clause(clause);
 
         assert!(matches!(solve(&cnf), Solution::Unsatisfiable));
     }
 
     #[test]
-    fn two_clause_unsat() {
+    fn two_conflicting_clause_unsat() {
         let mut cnf = CNF::new();
 
         let mut clause = Clause::new();
