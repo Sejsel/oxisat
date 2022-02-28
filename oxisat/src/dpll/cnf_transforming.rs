@@ -1,200 +1,51 @@
-use crate::dimacs;
-use crate::dimacs::Dimacs;
+use super::*;
 
-/// The underlying type that is used to handle variables.
-/// This is a signed integer type.
-type VariableType = i32;
-
-pub const MAX_VARIABLE_COUNT: usize = (VariableType::MAX - 1) as usize;
-
-/// Represents a boolean variable without a value.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Variable(VariableType);
-
-/// Represents a literal, i.e. a variable with a set value (true or false).
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Literal(VariableType);
-
-/// Represents a CNF clause (a disjunction of literals).
-#[derive(Clone, Debug)]
-pub struct Clause {
-    literals: Vec<Literal>,
+struct State<TStats: StatsStorage> {
+    variables: Vec<VariableState>,
+    cnf: CNF,
+    cnf_change_stack: Vec<CNFStackItem>,
+    stats: TStats,
 }
 
-/// Represents a formula in a Conjunctive normal form (a conjunction of disjunction clauses).
-#[derive(Clone, Debug)]
-pub struct CNF {
-    clauses: Vec<Clause>,
+enum CNFStackItem {
+    UnitPropagation,
+    SetVariable {
+        variable: Variable,
+        previous_state: VariableState,
+    },
+    Change(CNFChange),
 }
 
-impl From<Dimacs> for CNF {
-    fn from(dimacs: Dimacs) -> Self {
-        let mut cnf = CNF::new();
+enum CNFChange {
+    RemoveClause {
+        clause: Clause,
+        clause_index: usize,
+    },
+    RemoveLiteral {
+        literal: Literal,
+        clause_index: usize,
+    },
+}
 
-        for dimacs_clause in dimacs.clauses() {
-            let mut clause = Clause::new();
-
-            for literal in dimacs_clause.literals() {
-                clause.add_literal(match literal {
-                    dimacs::Literal::Positive(variable) => Literal::new(
-                        Variable((*variable).try_into().expect(
-                            "Variable index does not fit into the range of the underlying type",
-                        )),
-                        true,
-                    ),
-                    dimacs::Literal::Negative(variable) => Literal::new(
-                        Variable((*variable).try_into().expect(
-                            "Variable index does not fit into the range of the underlying type",
-                        )),
-                        false,
-                    ),
-                });
+impl CNFChange {
+    fn undo(self, cnf: &mut CNF) {
+        match self {
+            CNFChange::RemoveClause {
+                clause,
+                clause_index,
+            } => {
+                let len = cnf.clauses.len();
+                cnf.clauses.push(clause);
+                // We used `swap_remove` to remove the clause, we need to invert this operation
+                // to maintain index validity within other changes.
+                cnf.clauses.swap(clause_index, len);
             }
-
-            cnf.add_clause(clause);
-        }
-
-        cnf
-    }
-}
-
-impl Variable {
-    /// Creates a new variable with a given **positive** number.
-    ///
-    /// # Panics
-    /// Panics if `number <= 0` with a debug assert.
-    /// The value is not checked when debug asserts are disabled.
-    pub fn new(number: VariableType) -> Self {
-        // For performance reasons, we only check this in debug mode.
-        debug_assert!(number > 0);
-        Variable(number)
-    }
-
-    pub fn number(&self) -> VariableType {
-        self.0
-    }
-}
-
-impl Literal {
-    /// Creates a new literal for a variable with a set value.
-    pub fn new(variable: Variable, is_true: bool) -> Self {
-        if is_true {
-            Literal(variable.0)
-        } else {
-            Literal(-variable.0)
+            CNFChange::RemoveLiteral {
+                literal,
+                clause_index,
+            } => cnf.clauses[clause_index].literals.push(literal),
         }
     }
-
-    /// Returns `true` if the literal is true.
-    fn value(&self) -> bool {
-        self.0 > 0
-    }
-
-    /// Returns the variable of the literal.
-    fn variable(&self) -> Variable {
-        if self.0 > 0 {
-            Variable(self.0)
-        } else {
-            Variable(-self.0)
-        }
-    }
-
-    fn negated(&self) -> Literal {
-        Literal(-self.0)
-    }
-}
-
-impl std::ops::Not for Literal {
-    type Output = Literal;
-
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Clause {
-    /// Creates a new empty clause.
-    pub fn new() -> Self {
-        Self {
-            literals: Vec::new(),
-        }
-    }
-
-    /// Adds a literal to the clause without checking whether this variable is already present.
-    pub fn add_literal(&mut self, literal: Literal) {
-        self.literals.push(literal)
-    }
-
-    /// Adds a literal to the clause.
-    ///
-    /// Returns `false` if there is already a literal with this variable within this clause.
-    #[must_use]
-    pub fn add_literal_checked(&mut self, literal: Literal) -> bool {
-        if self.contains_variable(literal.variable()) {
-            false
-        } else {
-            self.literals.push(literal);
-            true
-        }
-    }
-
-    /// Adds a literal to the clause without checking whether this variable is already present.
-    pub fn add_variable(&mut self, variable: Variable, value: bool) {
-        self.literals.push(Literal::new(variable, value))
-    }
-
-    /// Adds a literal to the clause.
-    ///
-    /// Returns `false` if there is already a literal with this variable within this clause.
-    #[must_use]
-    pub fn add_variable_checked(&mut self, variable: Variable, value: bool) -> bool {
-        if self.contains_variable(variable) {
-            false
-        } else {
-            self.literals.push(Literal::new(variable, value));
-            true
-        }
-    }
-
-    fn contains_variable(&self, variable: Variable) -> bool {
-        self.literals.iter().any(|x| x.variable() == variable)
-    }
-
-    fn is_empty(&self) -> bool {
-        self.literals.is_empty()
-    }
-}
-
-impl CNF {
-    /// Creates a new CNF with zero clauses.
-    /// An empty CNF is considered to be satisfied.
-    pub fn new() -> Self {
-        CNF {
-            clauses: Vec::new(),
-        }
-    }
-
-    /// Adds a clause to the CNF.
-    pub fn add_clause(&mut self, clause: Clause) {
-        self.clauses.push(clause)
-    }
-
-    /// Returns `true` if this CNF is satisfied (i.e. contains no clauses).
-    fn is_satisfied(&self) -> bool {
-        self.clauses.is_empty()
-    }
-
-    /// Returns `true` if this CNF cannot be satisfied (i.e. contains an empty clause)
-    fn is_unsatisfiable(&self) -> bool {
-        self.clauses.iter().any(|clause| clause.is_empty())
-    }
-}
-
-pub enum Solution {
-    Satisfiable(Vec<VariableState>),
-    Unsatisfiable,
 }
 
 pub fn solve<TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
@@ -217,23 +68,9 @@ pub fn solve<TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
     };
 
     let mut state = State::<TStatistics>::new(max_variable, cnf.clone());
-    match dpll(&mut state) {
+    match cnf_transforming::dpll(&mut state) {
         BranchOutcome::Satisfiable(variables) => (Solution::Satisfiable(variables), state.stats),
         BranchOutcome::Unsatisfiable => (Solution::Unsatisfiable, state.stats),
-    }
-}
-
-enum BranchOutcome {
-    Satisfiable(Vec<VariableState>),
-    Unsatisfiable,
-}
-
-impl BranchOutcome {
-    fn is_satisfiable(&self) -> bool {
-        match self {
-            BranchOutcome::Satisfiable(_) => true,
-            BranchOutcome::Unsatisfiable => false,
-        }
     }
 }
 
@@ -307,110 +144,6 @@ fn unit_propagation<TStats: StatsStorage>(state: &mut State<TStats>) -> UnitProp
     }
 
     UnitPropagationOutcome::Finished
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum VariableState {
-    Unset,
-    True,
-    False,
-}
-
-impl From<bool> for VariableState {
-    fn from(value: bool) -> Self {
-        if value {
-            VariableState::True
-        } else {
-            VariableState::False
-        }
-    }
-}
-
-pub trait StatsStorage: Default {
-    fn increment_decisions(&mut self);
-    fn increment_unit_propagation_steps(&mut self);
-}
-
-#[derive(Default)]
-pub struct NoStats;
-
-#[derive(Default)]
-pub struct Stats {
-    decisions: u64,
-    unit_propagation_steps: u64,
-}
-
-impl Stats {
-    pub fn decisions(&self) -> u64 {
-        self.decisions
-    }
-
-    pub fn unit_propagation_steps(&self) -> u64 {
-        self.unit_propagation_steps
-    }
-}
-
-impl StatsStorage for NoStats {
-    fn increment_decisions(&mut self) {}
-    fn increment_unit_propagation_steps(&mut self) {}
-}
-
-impl StatsStorage for Stats {
-    fn increment_decisions(&mut self) {
-        self.decisions += 1;
-    }
-
-    fn increment_unit_propagation_steps(&mut self) {
-        self.unit_propagation_steps += 1;
-    }
-}
-
-struct State<TStats: StatsStorage> {
-    variables: Vec<VariableState>,
-    cnf: CNF,
-    cnf_change_stack: Vec<CNFStackItem>,
-    stats: TStats,
-}
-
-enum CNFStackItem {
-    UnitPropagation,
-    SetVariable {
-        variable: Variable,
-        previous_state: VariableState,
-    },
-    Change(CNFChange),
-}
-
-enum CNFChange {
-    RemoveClause {
-        clause: Clause,
-        clause_index: usize,
-    },
-    RemoveLiteral {
-        literal: Literal,
-        clause_index: usize,
-    },
-}
-
-impl CNFChange {
-    fn undo(self, cnf: &mut CNF) {
-        match self {
-            CNFChange::RemoveClause {
-                clause,
-                clause_index,
-            } => {
-                let len = cnf.clauses.len();
-                cnf.clauses.push(clause);
-                // We used `swap_remove` to remove the clause, we need to invert this operation
-                // to maintain index validity within other changes.
-                cnf.clauses.swap(clause_index, len);
-            }
-            CNFChange::RemoveLiteral {
-                literal,
-                clause_index,
-            } => cnf.clauses[clause_index].literals.push(literal),
-        }
-    }
 }
 
 #[must_use]
