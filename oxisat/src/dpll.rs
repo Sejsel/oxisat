@@ -257,6 +257,8 @@ fn dpll<TStats: StatsStorage>(state: &mut State<TStats>) -> BranchOutcome {
     let next_variable = state.first_unset_variable().unwrap();
 
     for variable_state in [VariableState::True, VariableState::False] {
+        state.stats.increment_decisions();
+
         if state.set_variable(next_variable, variable_state) == SetVariableOutcome::Ok {
             let outcome = dpll(state);
             if outcome.is_satisfiable() {
@@ -487,8 +489,6 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
             previous_state: *variable_state,
         });
         *variable_state = state;
-
-        self.stats.increment_decisions();
 
         if state != VariableState::Unset {
             let new_literal = Literal::new(
