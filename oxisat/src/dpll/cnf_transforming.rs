@@ -1,3 +1,24 @@
+//! An implementation of DPLL that maintains a CNF that is transformed with each decision.
+//!
+//! This transformed CNF has fewer and fewer clauses and literals as the search gets deeper.
+//! However, it is highly unlikely this implementation is any better than alternatives.
+//! The transformed CNF does not necessarily keep the same order of clauses and literals.
+//!
+//! The current implementation can be expanded by adding a new array that maps
+//! clause_index -> current_clause_index, and by adding the clause index to clauses to implement
+//! the reverse mapping. This map can be maintained in O(1) time for each operation and would allow
+//! implementing optimizations that require references to clauses.
+//!
+//! - O(clauses + literals) unit propagation search
+//! - O(clauses + literals) set variable
+//!   ^ note that these apply to the transformed CNF, which often
+//!     has fewer clauses or literals than the original.
+//! - O(#changes)           unset variable
+//! - O(1)                  removing/restoring a clause
+//! - O(1)                  removing/restoring a literal
+//!
+//! CNF changes do not require allocations, but the stack storing a list of changes
+//! may need them when initially expanding.
 use super::*;
 
 struct State<TStats: StatsStorage> {
