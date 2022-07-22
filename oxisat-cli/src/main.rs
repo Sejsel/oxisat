@@ -1,14 +1,14 @@
 use anyhow::anyhow;
-use clap::Parser;
+use clap::{Parser, ArgEnum};
 use colored::Colorize;
 use comfy_table::Table;
 use nom::Finish;
-use oxisat::dpll;
 use oxisat::dpll::{NoStats, Solution, Stats, VariableState, CNF};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
+use oxisat::dpll;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -17,8 +17,17 @@ struct Args {
     #[clap(short, long)]
     no_stats: bool,
 
+    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllClauseMapping)]
+    implementation: Implementation,
+
     #[clap(group = "input")]
     input_file: Option<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
+enum Implementation {
+    DpllCnfTransforming,
+    DpllClauseMapping,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -54,11 +63,16 @@ fn main() -> anyhow::Result<()> {
 
     let start_time = Instant::now();
 
+    let dpll_impl = match args.implementation {
+        Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
+        Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
+    };
+
     let (solution, stats) = if !args.no_stats {
-        let (solution, stats) = dpll::solve::<Stats>(&cnf);
+        let (solution, stats) = dpll::solve::<Stats>(&cnf, dpll_impl);
         (solution, Some(stats))
     } else {
-        let (solution, _) = dpll::solve::<NoStats>(&cnf);
+        let (solution, _) = dpll::solve::<NoStats>(&cnf, dpll_impl);
         (solution, None)
     };
 

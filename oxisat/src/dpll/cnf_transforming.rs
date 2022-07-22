@@ -70,16 +70,11 @@ impl CNFChange {
 }
 
 pub fn solve<TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
-    let max_variable = match cnf
-        .clauses
-        .iter()
-        .flat_map(|x| x.literals.iter().map(|x| x.variable()))
-        .max()
-    {
+    let max_variable = match cnf.max_variable() {
         Some(max) => max,
         None => {
-            // CNF with no variables
             return if cnf.clauses.is_empty() {
+                // CNF with no variables
                 (Solution::Satisfiable(Vec::new()), Default::default())
             } else {
                 // There is an empty clause, which is unsatisfiable.
@@ -106,12 +101,11 @@ fn dpll<TStats: StatsStorage>(state: &mut State<TStats>) -> BranchOutcome {
     if state.cnf.is_satisfied() {
         return BranchOutcome::Satisfiable(state.variables.clone());
     }
-    if state.cnf.is_unsatisfiable() {
-        state.undo_last_unit_propagation();
-        return BranchOutcome::Unsatisfiable;
-    }
 
-    // The unsatisfiability check above should ensure there is an unset variable.
+    debug_assert!(!state.cnf.is_unsatisfiable());
+
+    // The unsatisfiability check at the unit propagation result
+    // should ensure there is an unset variable.
     let next_variable = state.first_unset_variable().unwrap();
 
     for variable_state in [VariableState::True, VariableState::False] {

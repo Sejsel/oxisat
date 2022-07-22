@@ -1,3 +1,4 @@
+mod clause_mapping;
 mod cnf_transforming;
 
 use crate::dimacs;
@@ -125,6 +126,9 @@ impl Clause {
     }
 
     /// Adds a literal to the clause without checking whether this variable is already present.
+    ///
+    /// # Warning
+    /// Adding a literal that is already present will result in undefined behavior.
     pub fn add_literal(&mut self, literal: Literal) {
         self.literals.push(literal)
     }
@@ -143,6 +147,9 @@ impl Clause {
     }
 
     /// Adds a literal to the clause without checking whether this variable is already present.
+    ///
+    /// # Warning
+    /// Adding a literal that is already present will result in undefined behavior.
     pub fn add_variable(&mut self, variable: Variable, value: bool) {
         self.literals.push(Literal::new(variable, value))
     }
@@ -192,6 +199,16 @@ impl CNF {
     fn is_unsatisfiable(&self) -> bool {
         self.clauses.iter().any(|clause| clause.is_empty())
     }
+
+    /// Returns the maximum variable used within the CNF.
+    ///
+    /// Runs in O(literals) time.
+    fn max_variable(&self) -> Option<Variable> {
+        self.clauses
+            .iter()
+            .flat_map(|x| x.literals.iter().map(|x| x.variable()))
+            .max()
+    }
 }
 
 pub enum Solution {
@@ -199,8 +216,21 @@ pub enum Solution {
     Unsatisfiable,
 }
 
-pub fn solve<TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
-    cnf_transforming::solve(cnf)
+pub enum Implementation {
+    Default,
+    CnfTransforming,
+    ClauseMapping,
+}
+
+pub fn solve<TStatistics: StatsStorage>(
+    cnf: &CNF,
+    implementation: Implementation,
+) -> (Solution, TStatistics) {
+    match implementation {
+        Implementation::Default => clause_mapping::solve(cnf),
+        Implementation::CnfTransforming => cnf_transforming::solve(cnf),
+        Implementation::ClauseMapping => clause_mapping::solve(cnf),
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -208,6 +238,18 @@ pub enum VariableState {
     Unset,
     True,
     False,
+}
+
+impl VariableState {
+    pub fn satisfies(&self, literal: Literal) -> bool {
+        let literal_state: VariableState = literal.value().into();
+        *self == literal_state
+    }
+
+    pub fn unsatisfies(&self, literal: Literal) -> bool {
+        let literal_state_negated: VariableState = (!literal.value()).into();
+        *self == literal_state_negated
+    }
 }
 
 impl From<bool> for VariableState {

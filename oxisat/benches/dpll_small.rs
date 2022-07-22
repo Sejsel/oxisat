@@ -3,7 +3,7 @@ use std::io::Read;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use oxisat::dimacs::Dimacs;
 use oxisat::{dimacs, dpll};
-use oxisat::dpll::{Clause, NoStats, Stats, Variable, CNF};
+use oxisat::dpll::{Clause, NoStats, Stats, Variable, CNF, Implementation};
 
 fn dpll_4v_3c(c: &mut Criterion) {
     let mut cnf = CNF::new();
@@ -24,12 +24,19 @@ fn dpll_4v_3c(c: &mut Criterion) {
     cnf.add_clause(clause);
 
     let mut group = c.benchmark_group("dpll");
-    group.bench_with_input(BenchmarkId::new("nostats", "4v-3c"), &cnf, |b, cnf| {
-        b.iter(|| dpll::solve::<NoStats>(cnf))
+    group.bench_with_input(BenchmarkId::new("cnf_transforming-nostats", "4v-3c"), &cnf, |b, cnf| {
+        b.iter(|| dpll::solve::<NoStats>(cnf, Implementation::CnfTransforming))
     });
 
-    group.bench_with_input(BenchmarkId::new("stats", "4v-3c"), &cnf, |b, cnf| {
-        b.iter(|| dpll::solve::<Stats>(cnf))
+    group.bench_with_input(BenchmarkId::new("cnf_transforming-stats", "4v-3c"), &cnf, |b, cnf| {
+        b.iter(|| dpll::solve::<Stats>(cnf, Implementation::CnfTransforming))
+    });
+    group.bench_with_input(BenchmarkId::new("clause_mapping-nostats", "4v-3c"), &cnf, |b, cnf| {
+        b.iter(|| dpll::solve::<NoStats>(cnf, Implementation::CnfTransforming))
+    });
+
+    group.bench_with_input(BenchmarkId::new("clause_mapping-stats", "4v-3c"), &cnf, |b, cnf| {
+        b.iter(|| dpll::solve::<Stats>(cnf, Implementation::CnfTransforming))
     });
     group.finish();
 }
@@ -41,12 +48,20 @@ fn dpll_cadical_cnf(c: &mut Criterion) {
         let path = format!("{}/tests/cnf/cadical/{instance}.cnf", env!("CARGO_MANIFEST_DIR"));
         let cnf = load_dimacs(path).into();
 
-        group.bench_with_input(BenchmarkId::new("nostats", instance), &cnf, |b, cnf| {
-            b.iter(|| dpll::solve::<NoStats>(cnf))
+        group.bench_with_input(BenchmarkId::new("cnf_transforming-nostats", instance), &cnf, |b, cnf| {
+            b.iter(|| dpll::solve::<NoStats>(cnf, Implementation::CnfTransforming))
         });
 
-        group.bench_with_input(BenchmarkId::new("stats", instance), &cnf, |b, cnf| {
-            b.iter(|| dpll::solve::<Stats>(cnf))
+        group.bench_with_input(BenchmarkId::new("cnf_transforming-stats", instance), &cnf, |b, cnf| {
+            b.iter(|| dpll::solve::<Stats>(cnf, Implementation::CnfTransforming))
+        });
+
+        group.bench_with_input(BenchmarkId::new("clause_mapping-nostats", instance), &cnf, |b, cnf| {
+            b.iter(|| dpll::solve::<NoStats>(cnf, Implementation::ClauseMapping))
+        });
+
+        group.bench_with_input(BenchmarkId::new("clause_mapping-stats", instance), &cnf, |b, cnf| {
+            b.iter(|| dpll::solve::<Stats>(cnf, Implementation::ClauseMapping))
         });
 
     }
