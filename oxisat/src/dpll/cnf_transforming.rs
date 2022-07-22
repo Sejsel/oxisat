@@ -140,7 +140,7 @@ fn unit_propagation<TStats: StatsStorage>(state: &mut State<TStats>) -> UnitProp
             .cnf
             .clauses
             .iter()
-            .find(|clause| clause.literals.len() == 1)
+            .find(|clause| clause.is_unit())
             .map(|clause| clause.literals[0]);
 
         if let Some(literal) = unit_literal {
@@ -293,8 +293,8 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
                     LiteralSearchResult::FoundNegated(literal_index) => {
                         // Negation found; only this single literal is removed.
                         let clause = &mut self.cnf.clauses[clause_i];
-                        if clause.literals.len() == 1 {
-                            // If the clause becomes empty, we report it.
+                        if clause.is_unit() {
+                            // The clause would become empty, we report it as unsatisfiable.
                             return SetVariableOutcome::Unsatisfiable;
                         }
                         clause.literals.swap_remove(literal_index);

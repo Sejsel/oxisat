@@ -174,6 +174,10 @@ impl Clause {
     fn is_empty(&self) -> bool {
         self.literals.is_empty()
     }
+
+    fn is_unit(&self) -> bool {
+        self.literals.len() == 1
+    }
 }
 
 impl CNF {
