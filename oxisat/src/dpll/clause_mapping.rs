@@ -81,26 +81,36 @@ impl LiteralToClauseMap {
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Copy, Clone)]
 enum ClauseState {
     Satisfied,
     Unsatisfied { unset_size: usize },
 }
 
+impl ClauseState {
+    fn is_satisfied(self) -> bool {
+        self == ClauseState::Satisfied
+    }
+}
+
 struct ClauseStates {
     states_by_index: Vec<ClauseState>,
+    unsatisfied: usize,
 }
 
 impl ClauseStates {
     fn from_cnf(cnf: &CNF) -> Self {
         let mut states = ClauseStates {
             states_by_index: Vec::new(),
+            unsatisfied: cnf.clauses.len(),
         };
+
         for clause in &cnf.clauses {
             states.states_by_index.push(ClauseState::Unsatisfied {
                 unset_size: clause.literals.len(),
             });
         }
+
         states
     }
 
@@ -115,12 +125,14 @@ impl ClauseStates {
         &self.states_by_index[clause_index]
     }
 
-    fn get_state_mut(&mut self, clause_index: usize) -> &mut ClauseState {
-        &mut self.states_by_index[clause_index]
-    }
-
     fn set_state(&mut self, clause_index: usize, new_state: ClauseState) {
-        self.states_by_index[clause_index] = new_state;
+        let old_state = &mut self.states_by_index[clause_index];
+        if !old_state.is_satisfied() && new_state.is_satisfied() {
+            self.unsatisfied -= 1;
+        } else if old_state.is_satisfied() && !new_state.is_satisfied() {
+            self.unsatisfied += 1;
+        }
+        *old_state = new_state;
     }
 }
 
@@ -154,13 +166,7 @@ fn dpll<TStats: StatsStorage>(state: &mut State<TStats>) -> BranchOutcome {
         return BranchOutcome::Unsatisfiable;
     }
 
-    // TODO: Maintain count of active (unsatisfied) clauses
-    let satisfied = state
-        .clauses
-        .states_by_index
-        .iter()
-        .all(|x| *x == ClauseState::Satisfied);
-    if satisfied {
+    if state.clauses.unsatisfied == 0 {
         return BranchOutcome::Satisfiable(state.variables.clone());
     }
 
@@ -386,14 +392,18 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
             // All clauses that contain the negated literal have
             // it removed; moving towards unsatisfiability
             for clause in self.literal_to_clause_map.clauses(!new_literal) {
-                let state = self.clauses.get_state_mut(*clause);
-                if let ClauseState::Unsatisfied { unset_size: size } = state {
+                let old_state = self.clauses.get_state(*clause);
+                if let ClauseState::Unsatisfied { unset_size: size } = old_state {
                     // We assume the literal only occurs once in the clause.
                     let new_size = *size - 1usize;
 
-                    *state = ClauseState::Unsatisfied {
-                        unset_size: new_size,
-                    };
+                    self.clauses.set_state(
+                        *clause,
+                        ClauseState::Unsatisfied {
+                            unset_size: new_size,
+                        },
+                    );
+
                     if new_size == 0 {
                         return SetVariableOutcome::Unsatisfiable;
                     }
