@@ -75,6 +75,7 @@ impl Variable {
         Variable(number)
     }
 
+    #[inline]
     pub fn number(&self) -> VariableType {
         self.0
     }
@@ -91,12 +92,14 @@ impl Literal {
     }
 
     /// Returns `true` if the literal is true.
-    fn value(&self) -> bool {
+    #[inline]
+    fn value(self) -> bool {
         self.0 > 0
     }
 
     /// Returns the variable of the literal.
-    fn variable(&self) -> Variable {
+    #[inline]
+    fn variable(self) -> Variable {
         if self.0 > 0 {
             Variable(self.0)
         } else {
@@ -104,7 +107,8 @@ impl Literal {
         }
     }
 
-    fn negated(&self) -> Literal {
+    #[inline]
+    fn negated(self) -> Literal {
         Literal(-self.0)
     }
 }
@@ -112,6 +116,7 @@ impl Literal {
 impl std::ops::Not for Literal {
     type Output = Literal;
 
+    #[inline]
     fn not(self) -> Self::Output {
         self.negated()
     }
@@ -245,11 +250,13 @@ pub enum VariableState {
 }
 
 impl VariableState {
+    #[inline]
     pub fn satisfies(&self, literal: Literal) -> bool {
         let literal_state: VariableState = literal.value().into();
         *self == literal_state
     }
 
+    #[inline]
     pub fn unsatisfies(&self, literal: Literal) -> bool {
         let literal_state_negated: VariableState = (!literal.value()).into();
         *self == literal_state_negated
