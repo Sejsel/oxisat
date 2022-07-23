@@ -88,21 +88,38 @@ enum ClauseState {
 }
 
 impl ClauseState {
+    #[inline]
     fn is_satisfied(self) -> bool {
         self == ClauseState::Satisfied
+    }
+
+    #[inline]
+    fn is_unit(self) -> bool {
+        matches!(self, ClauseState::Unsatisfied { unset_size: 1 })
     }
 }
 
 struct ClauseStates {
     states_by_index: Vec<ClauseState>,
     unsatisfied: usize,
+    /// Contains indices for all clauses that are unit, but may
+    /// also contain clauses that are not unit anymore.
+    unit_candidate_indices: Vec<usize>,
 }
 
 impl ClauseStates {
     fn from_cnf(cnf: &CNF) -> Self {
+        let unit_clause_indices = cnf
+            .clauses
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| x.is_unit())
+            .map(|(i, _)| i);
+
         let mut states = ClauseStates {
             states_by_index: Vec::new(),
             unsatisfied: cnf.clauses.len(),
+            unit_candidate_indices: unit_clause_indices.collect(),
         };
 
         for clause in &cnf.clauses {
@@ -114,11 +131,26 @@ impl ClauseStates {
         states
     }
 
+    fn get_unit_clause_index(&mut self) -> Option<usize> {
+        // Unit clause candidates may also contain clauses that are not unit anymore.
+        // We remove all the clauses from the end that are not unit anymore.
+        while let Some(index) = self.unit_candidate_indices.last() {
+            if self.is_unit(*index) {
+                break;
+            } else {
+                self.unit_candidate_indices.pop();
+            }
+        }
+
+        // We do not pop the found index clause as we want to maintain the invariant of all unit
+        // clauses being included in `unit_candidate_indices` and it may stay unit after this
+        // function is called.
+        self.unit_candidate_indices.last().copied()
+    }
+
+    #[inline]
     fn is_unit(&self, clause_index: usize) -> bool {
-        matches!(
-            self.states_by_index[clause_index],
-            ClauseState::Unsatisfied { unset_size: 1 }
-        )
+        self.states_by_index[clause_index].is_unit()
     }
 
     fn get_state(&self, clause_index: usize) -> &ClauseState {
@@ -132,6 +164,11 @@ impl ClauseStates {
         } else if old_state.is_satisfied() && !new_state.is_satisfied() {
             self.unsatisfied += 1;
         }
+
+        if new_state.is_unit() {
+            self.unit_candidate_indices.push(clause_index);
+        }
+
         *old_state = new_state;
     }
 }
@@ -202,7 +239,7 @@ fn unit_propagation<TStats: StatsStorage>(state: &mut State<TStats>) -> UnitProp
     state.cnf_change_stack.push(CNFStackItem::UnitPropagation);
 
     loop {
-        let unit_index = (0..state.cnf.clauses.len()).position(|i| state.clauses.is_unit(i));
+        let unit_index = state.clauses.get_unit_clause_index();
         let unit_literal = unit_index.and_then(|index| {
             state.cnf.clauses[index]
                 .literals
