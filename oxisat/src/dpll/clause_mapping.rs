@@ -153,8 +153,8 @@ impl ClauseStates {
         self.states_by_index[clause_index].is_unit()
     }
 
-    fn get_state(&self, clause_index: usize) -> &ClauseState {
-        &self.states_by_index[clause_index]
+    fn get_state(&self, clause_index: usize) -> ClauseState {
+        self.states_by_index[clause_index]
     }
 
     fn set_state(&mut self, clause_index: usize, new_state: ClauseState) {
@@ -431,7 +431,7 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
                 let old_state = self.clauses.get_state(*clause);
                 if let ClauseState::Unsatisfied { unset_size: size } = old_state {
                     // We assume the literal only occurs once in the clause.
-                    let new_size = *size - 1usize;
+                    let new_size = size - 1usize;
 
                     self.clauses.set_state(
                         *clause,
@@ -453,7 +453,7 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
     fn verify_consistency(&self) -> bool {
         for i in 0..self.cnf.clauses.len() {
             let real_state = self.calculate_clause_state(i);
-            if *self.clauses.get_state(i) != real_state {
+            if self.clauses.get_state(i) != real_state {
                 debug_assert!(false);
                 return false;
             }
