@@ -244,12 +244,12 @@ fn unit_propagation<TStats: StatsStorage>(state: &mut State<TStats>) -> UnitProp
             state.cnf.clauses[index]
                 .literals
                 .iter()
-                .find(|lit| *state.variable_state(lit.variable()) == VariableState::Unset)
+                .find(|lit| state.variable_state(lit.variable()) == VariableState::Unset)
                 .cloned()
         });
 
         if let Some(literal) = unit_literal {
-            debug_assert!(*state.variable_state(literal.variable()) == VariableState::Unset);
+            debug_assert!(state.variable_state(literal.variable()) == VariableState::Unset);
 
             state.stats.increment_unit_propagation_steps();
 
@@ -286,8 +286,8 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
         }
     }
 
-    fn variable_state(&self, variable: Variable) -> &VariableState {
-        &self.variables[variable.number() as usize]
+    fn variable_state(&self, variable: Variable) -> VariableState {
+        self.variables[variable.number() as usize]
     }
 
     fn first_unset_variable(&self) -> Option<Variable> {
