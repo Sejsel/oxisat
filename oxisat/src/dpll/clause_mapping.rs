@@ -11,7 +11,6 @@ use super::*;
 
 struct State<TStats: StatsStorage> {
     variables: Vec<VariableState>,
-    unset_candidate_variables: Vec<Variable>,
     cnf: CNF,
     cnf_change_stack: Vec<CNFStackItem>,
     literal_to_clause_map: LiteralToClauseMap,
@@ -279,7 +278,6 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
         State {
             // We allocate one extra element to make indexing trivial.
             variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
-            unset_candidate_variables: (1..=max_variable.number()).rev().map(Variable::new).collect(),
             literal_to_clause_map: LiteralToClauseMap::from_cnf(&cnf, max_variable),
             clauses: ClauseStates::from_cnf(&cnf),
             cnf,
@@ -292,28 +290,14 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
         &self.variables[variable.number() as usize]
     }
 
-    fn set_variable_state(&mut self, variable: Variable, state: VariableState) {
-        self.variables[variable.number() as usize] = state;
-        if state == VariableState::Unset {
-            self.unset_candidate_variables.push(variable);
-        }
-    }
-
-    fn first_unset_variable(&mut self) -> Option<Variable> {
-        // Unit clause candidates may also contain clauses that are not unit anymore.
-        // We remove all the clauses from the end that are not unit anymore.
-        while let Some(var) = self.unset_candidate_variables.last() {
-            if *self.variable_state(*var) == VariableState::Unset {
-                break;
-            } else {
-                self.unset_candidate_variables.pop();
-            }
-        }
-
-        // We do not pop the found variable as we want to maintain the invariant of unset variables
-        // being included in `unset_candidate_variables` and it may stay unset even after this
-        // function is called.
-        self.unset_candidate_variables.last().copied()
+    fn first_unset_variable(&self) -> Option<Variable> {
+        // TODO: Maintain a set of unset variables (?)
+        self.variables
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, &x)| x == VariableState::Unset)
+            .map(|(i, _)| Variable::new(i as VariableType))
     }
 
     fn undo_last_unit_propagation(&mut self) {
@@ -376,8 +360,7 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
 
     fn undo_variable_set_inner(&mut self, variable: Variable, previous_state: VariableState) {
         let state = self.variables[variable.number() as usize];
-        self.set_variable_state(variable, previous_state);
-
+        self.variables[variable.number() as usize] = previous_state;
         if state != VariableState::Unset {
             let new_literal = Literal::new(
                 variable,
@@ -412,13 +395,13 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
-        let variable_state = self.variable_state(variable);
+        let variable_state = &mut self.variables[variable.number() as usize];
 
         self.cnf_change_stack.push(CNFStackItem::SetVariable {
             variable,
             previous_state: *variable_state,
         });
-        self.set_variable_state(variable, state);
+        *variable_state = state;
 
         if state != VariableState::Unset {
             let new_literal = Literal::new(
