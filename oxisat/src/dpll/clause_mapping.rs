@@ -291,7 +291,6 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
     }
 
     fn first_unset_variable(&self) -> Option<Variable> {
-        // TODO: Maintain a set of unset variables (?)
         self.variables
             .iter()
             .enumerate()
