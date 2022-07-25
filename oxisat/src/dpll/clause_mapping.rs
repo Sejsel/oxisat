@@ -24,6 +24,10 @@ enum CNFStackItem {
         variable: Variable,
         previous_state: VariableState,
     },
+    SetClauseState {
+        clause_index: usize,
+        previous_state: ClauseState,
+    }
 }
 
 struct LiteralIncidences {
@@ -305,6 +309,9 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
                 Some(CNFStackItem::UnitPropagation) => {
                     break;
                 }
+                Some(CNFStackItem::SetClauseState { clause_index, previous_state }) => {
+                    self.clauses.set_state(clause_index, previous_state);
+                }
                 Some(CNFStackItem::SetVariable {
                     variable,
                     previous_state,
@@ -342,6 +349,9 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
     fn undo_last_set_variable(&mut self) {
         loop {
             match self.cnf_change_stack.pop() {
+                Some(CNFStackItem::SetClauseState { clause_index, previous_state }) => {
+                    self.clauses.set_state(clause_index, previous_state);
+                }
                 Some(CNFStackItem::SetVariable {
                     variable,
                     previous_state,
@@ -377,19 +387,6 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
                 .clauses(new_literal)
                 .iter()
                 .any(|x| self.literal_to_clause_map.clauses(!new_literal).contains(x)));
-
-            // All clauses that contain this literal were satisfied and need to be
-            // rescanned as they might still be satisfied from another literal.
-            for clause in self.literal_to_clause_map.clauses(new_literal) {
-                self.clauses
-                    .set_state(*clause, self.calculate_clause_state(*clause));
-            }
-
-            // All clauses that contain the negated literal have it added back
-            for clause in self.literal_to_clause_map.clauses(!new_literal) {
-                self.clauses
-                    .set_state(*clause, self.calculate_clause_state(*clause));
-            }
         }
     }
 
@@ -421,20 +418,28 @@ impl<TStatistics: StatsStorage> State<TStatistics> {
                 .any(|x| self.literal_to_clause_map.clauses(!new_literal).contains(x)));
 
             // All clauses that contain this literal are now satisfied.
-            for clause in self.literal_to_clause_map.clauses(new_literal) {
-                self.clauses.set_state(*clause, ClauseState::Satisfied);
+            for &clause in self.literal_to_clause_map.clauses(new_literal) {
+                self.cnf_change_stack.push(CNFStackItem::SetClauseState {
+                    clause_index: clause,
+                    previous_state: self.clauses.get_state(clause)
+                });
+                self.clauses.set_state(clause, ClauseState::Satisfied);
             }
 
             // All clauses that contain the negated literal have
             // it removed; moving towards unsatisfiability
-            for clause in self.literal_to_clause_map.clauses(!new_literal) {
-                let old_state = self.clauses.get_state(*clause);
+            for &clause in self.literal_to_clause_map.clauses(!new_literal) {
+                let old_state = self.clauses.get_state(clause);
                 if let ClauseState::Unsatisfied { unset_size: size } = old_state {
                     // We assume the literal only occurs once in the clause.
                     let new_size = size - 1usize;
 
+                    self.cnf_change_stack.push(CNFStackItem::SetClauseState {
+                        clause_index: clause,
+                        previous_state: old_state,
+                    });
                     self.clauses.set_state(
-                        *clause,
+                        clause,
                         ClauseState::Unsatisfied {
                             unset_size: new_size,
                         },
