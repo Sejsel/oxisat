@@ -176,85 +176,19 @@ impl ClauseStates {
 
 impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
     fn new(cnf: &CNF, max_variable: Variable) -> Self {
-        ClauseMappingState::new(cnf.clone(), max_variable)
-    }
-
-    fn start_unit_propagation(&mut self) {
-        self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
-    }
-
-    fn undo_last_unit_propagation(&mut self) {
-        self.undo_last_unit_propagation()
-    }
-
-    fn all_clauses_satisfied(&self) -> bool {
-        self.clauses.unsatisfied == 0
-    }
-
-    fn next_unset_variable(&self) -> Option<Variable> {
-        self.first_unset_variable()
-    }
-
-    fn into_result(self) -> (Solution, TStats) {
-        if self.all_clauses_satisfied() {
-            (Solution::Satisfiable(self.variables), self.stats)
-        } else {
-            (Solution::Unsatisfiable, self.stats)
-        }
-    }
-
-    fn stats(&mut self) -> &mut TStats {
-        &mut self.stats
-    }
-
-    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome {
-        self.set_variable(literal.variable(), literal.value().into())
-    }
-
-    fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
-        self.set_variable(variable, state)
-    }
-
-    fn undo_last_set_variable(&mut self) {
-        self.undo_last_set_variable()
-    }
-
-    fn next_unit_literal(&mut self) -> Option<Literal> {
-        let unit_index = self.clauses.get_unit_clause_index();
-        unit_index.and_then(|index| {
-            self.cnf.clauses[index]
-                .literals
-                .iter()
-                .find(|lit| self.variable_state(lit.variable()) == VariableState::Unset)
-                .cloned()
-        })
-    }
-}
-
-impl<TStats: StatsStorage> ClauseMappingState<TStats> {
-    fn new(cnf: CNF, max_variable: Variable) -> Self {
         ClauseMappingState {
             // We allocate one extra element to make indexing trivial.
             variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
             literal_to_clause_map: LiteralToClauseMap::from_cnf(&cnf, max_variable),
             clauses: ClauseStates::from_cnf(&cnf),
-            cnf,
+            cnf: cnf.clone(),
             cnf_change_stack: Vec::new(),
             stats: Default::default(),
         }
     }
 
-    fn variable_state(&self, variable: Variable) -> VariableState {
-        self.variables[variable.number() as usize]
-    }
-
-    fn first_unset_variable(&self) -> Option<Variable> {
-        self.variables
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_, &x)| x == VariableState::Unset)
-            .map(|(i, _)| Variable::new(i as VariableType))
+    fn start_unit_propagation(&mut self) {
+        self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
     }
 
     fn undo_last_unit_propagation(&mut self) {
@@ -278,76 +212,34 @@ impl<TStats: StatsStorage> ClauseMappingState<TStats> {
         }
     }
 
-    fn calculate_clause_state(&self, clause_index: usize) -> ClauseState {
-        let clause = &self.cnf.clauses[clause_index];
-        let mut unsatisfied = 0;
-        for &lit in &clause.literals {
-            let state = self.variable_state(lit.variable());
+    fn all_clauses_satisfied(&self) -> bool {
+        self.clauses.unsatisfied == 0
+    }
 
-            if state.satisfies(lit) {
-                // If any literal is satisfied, the entire clause is.
-                return ClauseState::Satisfied;
-            }
+    fn next_unset_variable(&self) -> Option<Variable> {
+        // We choose the variable with the lowest index.
+        self.variables
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, &x)| x == VariableState::Unset)
+            .map(|(i, _)| Variable::new(i as VariableType))
+    }
 
-            if state.unsatisfies(lit) {
-                // If the variable is set to the opposite value, it is unsatisfied.
-                unsatisfied += 1;
-            } else {
-                // The value is unset.
-            }
-        }
-
-        let clause_size = clause.literals.len();
-        ClauseState::Unsatisfied {
-            unset_size: clause_size - unsatisfied,
+    fn into_result(self) -> (Solution, TStats) {
+        if self.all_clauses_satisfied() {
+            (Solution::Satisfiable(self.variables), self.stats)
+        } else {
+            (Solution::Unsatisfiable, self.stats)
         }
     }
 
-    fn undo_last_set_variable(&mut self) {
-        loop {
-            match self.cnf_change_stack.pop() {
-                Some(CNFStackItem::SetClauseState {
-                    clause_index,
-                    previous_state,
-                }) => {
-                    self.clauses.set_state(clause_index, previous_state);
-                }
-                Some(CNFStackItem::SetVariable {
-                    variable,
-                    previous_state,
-                }) => {
-                    self.undo_variable_set_inner(variable, previous_state);
-                    break;
-                }
-                None => panic!("Undoing a variable that has not been set"),
-                Some(CNFStackItem::UnitPropagation) => {
-                    panic!("Undoing across a unit propagation boundary")
-                }
-            }
-        }
+    fn stats(&mut self) -> &mut TStats {
+        &mut self.stats
     }
 
-    fn undo_variable_set_inner(&mut self, variable: Variable, previous_state: VariableState) {
-        let state = self.variables[variable.number() as usize];
-        self.variables[variable.number() as usize] = previous_state;
-        if state != VariableState::Unset {
-            let new_literal = Literal::new(
-                variable,
-                match state {
-                    VariableState::True => true,
-                    VariableState::False => false,
-                    VariableState::Unset => unreachable!(),
-                },
-            );
-
-            // A clause that contains both a literal and its negation would get
-            // processed twice. These clauses can and should be ignored.
-            debug_assert!(!self
-                .literal_to_clause_map
-                .clauses(new_literal)
-                .iter()
-                .any(|x| self.literal_to_clause_map.clauses(!new_literal).contains(x)));
-        }
+    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome {
+        self.set_variable(literal.variable(), literal.value().into())
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
@@ -415,15 +307,67 @@ impl<TStats: StatsStorage> ClauseMappingState<TStats> {
         SetVariableOutcome::Ok
     }
 
-    fn verify_consistency(&self) -> bool {
-        for i in 0..self.cnf.clauses.len() {
-            let real_state = self.calculate_clause_state(i);
-            if self.clauses.get_state(i) != real_state {
-                debug_assert!(false);
-                return false;
+    fn undo_last_set_variable(&mut self) {
+        loop {
+            match self.cnf_change_stack.pop() {
+                Some(CNFStackItem::SetClauseState {
+                    clause_index,
+                    previous_state,
+                }) => {
+                    self.clauses.set_state(clause_index, previous_state);
+                }
+                Some(CNFStackItem::SetVariable {
+                    variable,
+                    previous_state,
+                }) => {
+                    self.undo_variable_set_inner(variable, previous_state);
+                    break;
+                }
+                None => panic!("Undoing a variable that has not been set"),
+                Some(CNFStackItem::UnitPropagation) => {
+                    panic!("Undoing across a unit propagation boundary")
+                }
             }
         }
+    }
 
-        true
+    fn next_unit_literal(&mut self) -> Option<Literal> {
+        let unit_index = self.clauses.get_unit_clause_index();
+        unit_index.and_then(|index| {
+            self.cnf.clauses[index]
+                .literals
+                .iter()
+                .find(|lit| self.variable_state(lit.variable()) == VariableState::Unset)
+                .cloned()
+        })
+    }
+}
+
+impl<TStats: StatsStorage> ClauseMappingState<TStats> {
+    fn variable_state(&self, variable: Variable) -> VariableState {
+        self.variables[variable.number() as usize]
+    }
+
+    fn undo_variable_set_inner(&mut self, variable: Variable, previous_state: VariableState) {
+        let state = self.variables[variable.number() as usize];
+        self.variables[variable.number() as usize] = previous_state;
+        if state != VariableState::Unset {
+            let new_literal = Literal::new(
+                variable,
+                match state {
+                    VariableState::True => true,
+                    VariableState::False => false,
+                    VariableState::Unset => unreachable!(),
+                },
+            );
+
+            // A clause that contains both a literal and its negation would get
+            // processed twice. These clauses can and should be ignored.
+            debug_assert!(!self
+                .literal_to_clause_map
+                .clauses(new_literal)
+                .iter()
+                .any(|x| self.literal_to_clause_map.clauses(!new_literal).contains(x)));
+        }
     }
 }

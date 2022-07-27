@@ -71,76 +71,17 @@ impl CNFChange {
 
 impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
     fn new(cnf: &CNF, max_variable: Variable) -> Self {
-        Self::new(cnf.clone(), max_variable)
-    }
-
-    fn start_unit_propagation(&mut self) {
-        self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
-    }
-
-    fn undo_last_unit_propagation(&mut self) {
-        self.undo_last_unit_propagation();
-    }
-
-    fn all_clauses_satisfied(&self) -> bool {
-        self.cnf.is_satisfied()
-    }
-
-    fn next_unset_variable(&self) -> Option<Variable> {
-        self.first_unset_variable()
-    }
-
-    fn into_result(self) -> (Solution, TStats) {
-        if self.all_clauses_satisfied() {
-            (Solution::Satisfiable(self.variables), self.stats)
-        } else {
-            (Solution::Unsatisfiable, self.stats)
-        }
-    }
-
-    fn stats(&mut self) -> &mut TStats {
-        &mut self.stats
-    }
-
-    fn set_variable_to_literal(&mut self, literal: Literal) -> crate::dpll::SetVariableOutcome {
-        self.set_variable(literal.variable(), literal.value().into())
-    }
-
-    fn set_variable(&mut self, variable: Variable, state: VariableState) -> crate::dpll::SetVariableOutcome {
-        self.set_variable(variable, state)
-    }
-
-    fn undo_last_set_variable(&mut self) {
-        self.undo_last_set_variable()
-    }
-
-    fn next_unit_literal(&mut self) -> Option<Literal> {
-        self
-            .cnf
-            .clauses
-            .iter()
-            .find(|clause| clause.is_unit())
-            .map(|clause| clause.literals[0])
-    }
-}
-impl<TStatistics: StatsStorage> CnfTransformingState<TStatistics> {
-    fn new(cnf: CNF, max_variable: Variable) -> Self {
         CnfTransformingState {
             // We allocate one extra element to make indexing trivial.
             variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
-            cnf,
+            cnf: cnf.clone(),
             cnf_change_stack: Vec::new(),
             stats: Default::default(),
         }
     }
 
-    fn first_unset_variable(&self) -> Option<Variable> {
-        self.variables
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_, &x)| x == VariableState::Unset)
-            .map(|(i, _)| Variable::new(i as VariableType))
+    fn start_unit_propagation(&mut self) {
+        self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
     }
 
     fn undo_last_unit_propagation(&mut self) {
@@ -161,27 +102,34 @@ impl<TStatistics: StatsStorage> CnfTransformingState<TStatistics> {
         }
     }
 
-    fn undo_last_set_variable(&mut self) {
-        loop {
-            match self.cnf_change_stack.pop() {
-                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf),
-                Some(CNFStackItem::SetVariable {
-                    variable,
-                    previous_state,
-                }) => {
-                    self.variables[variable.number() as usize] = previous_state;
-                    break;
-                }
-                None => panic!("Undoing a variable that has not been set"),
-                Some(CNFStackItem::UnitPropagation) => {
-                    panic!("Undoing across a unit propagation boundary")
-                }
-            }
+    fn all_clauses_satisfied(&self) -> bool {
+        self.cnf.is_satisfied()
+    }
+
+    fn next_unset_variable(&self) -> Option<Variable> {
+        // We choose the variable with the lowest index.
+        self.variables
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find(|(_, &x)| x == VariableState::Unset)
+            .map(|(i, _)| Variable::new(i as VariableType))
+    }
+
+    fn into_result(self) -> (Solution, TStats) {
+        if self.all_clauses_satisfied() {
+            (Solution::Satisfiable(self.variables), self.stats)
+        } else {
+            (Solution::Unsatisfiable, self.stats)
         }
     }
 
-    fn variable_state(&self, variable: Variable) -> &VariableState {
-        &self.variables[variable.number() as usize]
+    fn stats(&mut self) -> &mut TStats {
+        &mut self.stats
+    }
+
+    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome {
+        self.set_variable(literal.variable(), literal.value().into())
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
@@ -269,5 +217,32 @@ impl<TStatistics: StatsStorage> CnfTransformingState<TStatistics> {
         }
 
         SetVariableOutcome::Ok
+    }
+
+    fn undo_last_set_variable(&mut self) {
+        loop {
+            match self.cnf_change_stack.pop() {
+                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf),
+                Some(CNFStackItem::SetVariable {
+                    variable,
+                    previous_state,
+                }) => {
+                    self.variables[variable.number() as usize] = previous_state;
+                    break;
+                }
+                None => panic!("Undoing a variable that has not been set"),
+                Some(CNFStackItem::UnitPropagation) => {
+                    panic!("Undoing across a unit propagation boundary")
+                }
+            }
+        }
+    }
+
+    fn next_unit_literal(&mut self) -> Option<Literal> {
+        self.cnf
+            .clauses
+            .iter()
+            .find(|clause| clause.is_unit())
+            .map(|clause| clause.literals[0])
     }
 }
