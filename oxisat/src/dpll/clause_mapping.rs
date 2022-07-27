@@ -77,7 +77,8 @@ impl LiteralToClauseMap {
         literal.variable().number() as usize * 2 + offset
     }
 
-    fn clauses(&self, literal: Literal) -> &Vec<usize> {
+    #[inline]
+    fn clauses(&self, literal: Literal) -> &[usize] {
         &self.incidences[Self::literal_index(literal)].clause_indices
     }
 }
@@ -154,6 +155,7 @@ impl ClauseStates {
         self.states_by_index[clause_index].is_unit()
     }
 
+    #[inline]
     fn get_state(&self, clause_index: usize) -> ClauseState {
         self.states_by_index[clause_index]
     }
@@ -187,6 +189,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
         }
     }
 
+    #[inline]
     fn start_unit_propagation(&mut self) {
         self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
     }
@@ -212,10 +215,12 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
         }
     }
 
+    #[inline]
     fn all_clauses_satisfied(&self) -> bool {
         self.clauses.unsatisfied == 0
     }
 
+    #[inline]
     fn next_unset_variable(&self) -> Option<Variable> {
         // We choose the variable with the lowest index.
         self.variables
@@ -234,10 +239,12 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
         }
     }
 
+    #[inline]
     fn stats(&mut self) -> &mut TStats {
         &mut self.stats
     }
 
+    #[inline]
     fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome {
         self.set_variable(literal.variable(), literal.value().into())
     }
@@ -331,6 +338,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
         }
     }
 
+    #[inline]
     fn next_unit_literal(&mut self) -> Option<Literal> {
         let unit_index = self.clauses.get_unit_clause_index();
         unit_index.and_then(|index| {
@@ -344,6 +352,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
 }
 
 impl<TStats: StatsStorage> ClauseMappingState<TStats> {
+    #[inline]
     fn variable_state(&self, variable: Variable) -> VariableState {
         self.variables[variable.number() as usize]
     }
