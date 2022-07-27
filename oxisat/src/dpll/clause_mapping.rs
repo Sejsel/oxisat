@@ -9,13 +9,13 @@ use super::*;
 pub struct ClauseMappingState<TStats: StatsStorage> {
     variables: Vec<VariableState>,
     cnf: CNF,
-    cnf_change_stack: Vec<CNFStackItem>,
+    change_stack: Vec<ChangeStackItem>,
     literal_to_clause_map: LiteralToClauseMap,
     clauses: ClauseStates,
     stats: TStats,
 }
 
-enum CNFStackItem {
+enum ChangeStackItem {
     UnitPropagation,
     SetVariable {
         variable: Variable,
@@ -184,29 +184,29 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             literal_to_clause_map: LiteralToClauseMap::from_cnf(&cnf, max_variable),
             clauses: ClauseStates::from_cnf(&cnf),
             cnf: cnf.clone(),
-            cnf_change_stack: Vec::new(),
+            change_stack: Vec::new(),
             stats: Default::default(),
         }
     }
 
     #[inline]
     fn start_unit_propagation(&mut self) {
-        self.cnf_change_stack.push(CNFStackItem::UnitPropagation);
+        self.change_stack.push(ChangeStackItem::UnitPropagation);
     }
 
     fn undo_last_unit_propagation(&mut self) {
         loop {
-            match self.cnf_change_stack.pop() {
-                Some(CNFStackItem::UnitPropagation) => {
+            match self.change_stack.pop() {
+                Some(ChangeStackItem::UnitPropagation) => {
                     break;
                 }
-                Some(CNFStackItem::SetClauseState {
+                Some(ChangeStackItem::SetClauseState {
                     clause_index,
                     previous_state,
                 }) => {
                     self.clauses.set_state(clause_index, previous_state);
                 }
-                Some(CNFStackItem::SetVariable {
+                Some(ChangeStackItem::SetVariable {
                     variable,
                     previous_state,
                 }) => self.undo_variable_set_inner(variable, previous_state),
@@ -252,7 +252,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
         let variable_state = &mut self.variables[variable.number() as usize];
 
-        self.cnf_change_stack.push(CNFStackItem::SetVariable {
+        self.change_stack.push(ChangeStackItem::SetVariable {
             variable,
             previous_state: *variable_state,
         });
@@ -278,7 +278,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
 
             // All clauses that contain this literal are now satisfied.
             for &clause in self.literal_to_clause_map.clauses(new_literal) {
-                self.cnf_change_stack.push(CNFStackItem::SetClauseState {
+                self.change_stack.push(ChangeStackItem::SetClauseState {
                     clause_index: clause,
                     previous_state: self.clauses.get_state(clause),
                 });
@@ -293,7 +293,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
                     // We assume the literal only occurs once in the clause.
                     let new_size = size - 1usize;
 
-                    self.cnf_change_stack.push(CNFStackItem::SetClauseState {
+                    self.change_stack.push(ChangeStackItem::SetClauseState {
                         clause_index: clause,
                         previous_state: old_state,
                     });
@@ -316,14 +316,14 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
 
     fn undo_last_set_variable(&mut self) {
         loop {
-            match self.cnf_change_stack.pop() {
-                Some(CNFStackItem::SetClauseState {
+            match self.change_stack.pop() {
+                Some(ChangeStackItem::SetClauseState {
                     clause_index,
                     previous_state,
                 }) => {
                     self.clauses.set_state(clause_index, previous_state);
                 }
-                Some(CNFStackItem::SetVariable {
+                Some(ChangeStackItem::SetVariable {
                     variable,
                     previous_state,
                 }) => {
@@ -331,7 +331,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
                     break;
                 }
                 None => panic!("Undoing a variable that has not been set"),
-                Some(CNFStackItem::UnitPropagation) => {
+                Some(ChangeStackItem::UnitPropagation) => {
                     panic!("Undoing across a unit propagation boundary")
                 }
             }
