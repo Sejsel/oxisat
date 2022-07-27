@@ -1,12 +1,9 @@
 //! An implementation of DPLL that maintains a map between literals and clauses that contain it.
 //!
-//! TODO: Finish docs after this is implemented.
-//! - O(?) unit propagation search
-//! - O(?) set variable
-//! - O(?) unset variable
-//! - O(?) removing/restoring a clause
-//! - O(?) removing/restoring a literal
-//!
+//! - O(1) amortized find unit clause
+//! - O(#clauses with var) set variable
+//! - O(#clauses with var) undo set variable variable
+//! - O(#vars) find unset variable (an O(1) amortized implementation performed worse)
 use super::*;
 
 struct State<TStats: StatsStorage> {
