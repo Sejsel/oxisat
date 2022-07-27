@@ -1,14 +1,14 @@
 use anyhow::anyhow;
-use clap::{Parser, ArgEnum};
+use clap::{ArgEnum, Parser};
 use colored::Colorize;
 use comfy_table::Table;
 use nom::Finish;
+use oxisat::dpll;
 use oxisat::dpll::{NoStats, Solution, Stats, VariableState, CNF};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
-use oxisat::dpll;
 
 #[derive(Parser, Debug)]
 #[clap(version)]

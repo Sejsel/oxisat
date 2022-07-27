@@ -3,6 +3,8 @@ mod cnf_transforming;
 
 use crate::dimacs;
 use crate::dimacs::Dimacs;
+use crate::dpll::clause_mapping::ClauseMappingState;
+use crate::dpll::cnf_transforming::CnfTransformingState;
 
 /// The underlying type that is used to handle variables.
 /// This is a signed integer type.
@@ -236,9 +238,9 @@ pub fn solve<TStatistics: StatsStorage>(
     implementation: Implementation,
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => clause_mapping::solve(cnf),
-        Implementation::CnfTransforming => cnf_transforming::solve(cnf),
-        Implementation::ClauseMapping => clause_mapping::solve(cnf),
+        Implementation::Default => solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf),
+        Implementation::CnfTransforming => solve_cnf::<CnfTransformingState<TStatistics>, TStatistics>(cnf),
+        Implementation::ClauseMapping => solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf),
     }
 }
 
@@ -273,19 +275,6 @@ impl From<bool> for VariableState {
     }
 }
 
-enum BranchOutcome {
-    Satisfiable(Vec<VariableState>),
-    Unsatisfiable,
-}
-
-impl BranchOutcome {
-    fn is_satisfiable(&self) -> bool {
-        match self {
-            BranchOutcome::Satisfiable(_) => true,
-            BranchOutcome::Unsatisfiable => false,
-        }
-    }
-}
 pub trait StatsStorage: Default {
     fn increment_decisions(&mut self);
     fn increment_unit_propagation_steps(&mut self);
@@ -322,5 +311,200 @@ impl StatsStorage for Stats {
 
     fn increment_unit_propagation_steps(&mut self) {
         self.unit_propagation_steps += 1;
+    }
+}
+
+trait DpllState<TStats: StatsStorage> {
+    fn new(cnf: &CNF, max_variable: Variable) -> Self;
+    fn start_unit_propagation(&mut self);
+    fn undo_last_unit_propagation(&mut self);
+    fn all_clauses_satisfied(&self) -> bool;
+    fn next_unset_variable(&self) -> Option<Variable>;
+    fn into_result(self) -> (Solution, TStats);
+    fn stats(&mut self) -> &mut TStats;
+    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome;
+    fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome;
+    fn undo_last_set_variable(&mut self);
+    fn next_unit_literal(&mut self) -> Option<Literal>;
+}
+
+#[must_use]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum DpllDecisionOutcome {
+    Satisfiable,
+    Unsatisfiable,
+}
+
+#[must_use]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum SetVariableOutcome {
+    Ok,
+    Unsatisfiable,
+}
+
+fn solve_cnf<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
+    let max_variable = match cnf.max_variable() {
+        Some(max) => max,
+        None => {
+            return if cnf.clauses.is_empty() {
+                // CNF with no variables
+                (Solution::Satisfiable(Vec::new()), Default::default())
+            } else {
+                // There is an empty clause, which is unsatisfiable.
+                (Solution::Unsatisfiable, Default::default())
+            };
+        }
+    };
+
+    let mut state = TState::new(cnf, max_variable);
+    match dpll(&mut state) {
+        DpllDecisionOutcome::Satisfiable => state.into_result(),
+        DpllDecisionOutcome::Unsatisfiable => state.into_result(),
+    }
+}
+
+fn dpll<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(state: &mut TState) -> DpllDecisionOutcome {
+    let propagation_result = unit_propagation(state);
+
+    if propagation_result == UnitPropagationOutcome::Unsatisfiable {
+        state.undo_last_unit_propagation();
+        return DpllDecisionOutcome::Unsatisfiable;
+    }
+
+    if state.all_clauses_satisfied() {
+        return DpllDecisionOutcome::Satisfiable;
+    }
+
+    // The unsatisfiability check at the unit propagation result
+    // should ensure there is an unset variable.
+    let next_variable = state.next_unset_variable().unwrap();
+
+    for variable_state in [VariableState::True, VariableState::False] {
+        state.stats().increment_decisions();
+
+        if state.set_variable(next_variable, variable_state) == SetVariableOutcome::Ok {
+            let outcome = dpll(state);
+            if outcome == DpllDecisionOutcome::Satisfiable {
+                return outcome;
+            }
+        }
+        state.undo_last_set_variable();
+    }
+
+    state.undo_last_unit_propagation();
+
+    DpllDecisionOutcome::Unsatisfiable
+}
+
+#[must_use]
+#[derive(Eq, PartialEq, Debug)]
+enum UnitPropagationOutcome {
+    Finished,
+    Unsatisfiable,
+}
+
+fn unit_propagation<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(state: &mut TState) -> UnitPropagationOutcome {
+    state.start_unit_propagation();
+
+    while let Some(literal) = state.next_unit_literal() {
+        state.stats().increment_unit_propagation_steps();
+
+        if state.set_variable_to_literal(literal) == SetVariableOutcome::Unsatisfiable
+        {
+            return UnitPropagationOutcome::Unsatisfiable;
+        }
+    }
+
+    UnitPropagationOutcome::Finished
+}
+
+#[cfg(test)]
+#[generic_tests::define]
+mod tests {
+    use super::*;
+
+    #[instantiate_tests(<ClauseMappingState<NoStats>>)]
+    mod clause_mapping {}
+
+    #[instantiate_tests(<CnfTransformingState<NoStats>>)]
+    mod cnf_transforming {}
+
+    #[test]
+    fn three_variables_sat<TState: DpllState<NoStats>>() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(3), false);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(3), true);
+        clause.add_variable(Variable::new(4), false);
+        cnf.add_clause(clause);
+
+        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn three_variables_unit_propagation_sat<TState: DpllState<NoStats>>() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(3), true);
+        cnf.add_clause(clause);
+
+        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn empty_sat<TState: DpllState<NoStats>>() {
+        let cnf = CNF::new();
+
+        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn empty_clause_unsat<TState: DpllState<NoStats>>() {
+        let mut cnf = CNF::new();
+        let clause = Clause::new();
+        cnf.add_clause(clause);
+
+        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn two_conflicting_clause_unsat<TState: DpllState<NoStats>>() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
+        assert!(matches!(solution, Solution::Unsatisfiable));
     }
 }
