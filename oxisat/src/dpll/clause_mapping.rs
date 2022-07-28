@@ -181,8 +181,8 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
         ClauseMappingState {
             // We allocate one extra element to make indexing trivial.
             variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
-            literal_to_clause_map: LiteralToClauseMap::from_cnf(&cnf, max_variable),
-            clauses: ClauseStates::from_cnf(&cnf),
+            literal_to_clause_map: LiteralToClauseMap::from_cnf(cnf, max_variable),
+            clauses: ClauseStates::from_cnf(cnf),
             cnf: cnf.clone(),
             change_stack: Vec::new(),
             stats: Default::default(),

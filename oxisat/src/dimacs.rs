@@ -104,7 +104,7 @@ mod parser {
         move |i: &str| {
             // Ensure that the clauses do not contain variables with numbers too high.
             let literal = verify(text_i64, |&literal: &i64| {
-                literal.abs() as usize <= max_variable
+                literal.unsigned_abs() as usize <= max_variable
             });
 
             // Clauses are inconveniently terminated by a single 0.
