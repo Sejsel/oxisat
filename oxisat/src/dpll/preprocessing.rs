@@ -97,13 +97,13 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
         let mut any_changed = false;
         for clause in &mut cnf.clauses {
             // Remove literals which are not satisfiable.
-            let len_before = clause.literals.len();
+            let len_before = clause.len();
             clause.literals.retain(|&literal| {
                 let state = states.get(literal.variable());
                 !state.unsatisfies(literal)
             });
 
-            if clause.literals.len() != len_before {
+            if clause.len() != len_before {
                 any_changed = true;
             }
         }
@@ -180,7 +180,12 @@ fn remove_duplicate_literals(cnf: &mut CNF, max_variable: Variable) {
     // We maintain a list which maps literal -> index of last clause where it was seen.
     let mut last_seen_indices = vec![usize::MAX; (max_variable.number() as usize + 1) * 2];
 
+    // We may need to remove clauses that are already satisfied. This is not a common scenario in
+    // inputs, so we do it in another pass. If there are no such clauses, this won't even allocate.
+    let mut removed_clauses = Vec::new();
+
     for (i, clause) in cnf.clauses.iter_mut().enumerate() {
+        let mut satisfied = false;
         clause.literals.retain(|literal| {
             let offset = if literal.value() { 1 } else { 0 };
             let index = literal.variable().number() as usize * 2 + offset;
@@ -189,8 +194,45 @@ fn remove_duplicate_literals(cnf: &mut CNF, max_variable: Variable) {
             let retain = last_seen_indices[index] != i;
             last_seen_indices[index] = i;
 
+            // We also check for the negated version of this literal being contained in this clause.
+            let negated_offset = if literal.value() { 0 } else { 1 };
+            let negated_index = literal.variable().number() as usize * 2 + negated_offset;
+
+            // We cannot break here, but this scenario of a clause containing
+            // both a literal and its negation should be rare.
+            if last_seen_indices[negated_index] == i {
+                satisfied = true;
+            }
+
             retain
         });
+
+        if satisfied {
+            removed_clauses.push(i);
+        }
+    }
+
+    // Remove clauses prepared for removal.
+    if !removed_clauses.is_empty() {
+        // We expect that `removed_clauses` is sorted.
+        let mut removed_clauses_iter = removed_clauses.iter();
+        let mut current_removal = removed_clauses_iter.next();
+        let mut index = 0;
+
+        cnf.clauses.retain(|_| {
+            let mut retain = true;
+
+            if let Some(index_to_remove) = current_removal {
+                if index == *index_to_remove {
+                    retain = false;
+                    current_removal = removed_clauses_iter.next();
+                }
+            }
+
+            index += 1;
+
+            retain
+        })
     }
 }
 
@@ -277,7 +319,7 @@ mod tests {
             assert_eq!(Some(Variable::new(2)), new_max_variable);
 
             assert_eq!(cnf.clauses.len(), 1);
-            assert_eq!(cnf.clauses[0].literals.len(), 2);
+            assert_eq!(cnf.clauses[0].len(), 2);
             for lit in &cnf.clauses[0].literals {
                 let var = lit.variable();
                 assert!(var == Variable::new(1) || var == Variable::new(2));
@@ -325,6 +367,28 @@ mod tests {
         let max_var = cnf.max_variable().unwrap();
         preprocess_cnf(&mut cnf, max_var);
         assert_eq!(cnf.clauses.len(), 1);
-        assert_eq!(cnf.clauses[0].literals.len(), 2);
+        assert_eq!(cnf.clauses[0].len(), 2);
+    }
+
+    #[test]
+    fn removes_clause_with_both_versions_of_literal() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        // This clause is always satisfied (3 or not 3).
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(3), false);
+        clause.add_variable(Variable::new(3), true);
+        clause.add_variable(Variable::new(4), false);
+        cnf.add_clause(clause);
+
+        let max_var = cnf.max_variable().unwrap();
+        preprocess_cnf(&mut cnf, max_var);
+        assert_eq!(cnf.clauses.len(), 1);
+        assert_eq!(cnf.clauses[0].len(), 2);
     }
 }

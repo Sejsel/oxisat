@@ -126,7 +126,7 @@ impl ClauseStates {
 
         for clause in &cnf.clauses {
             states.states_by_index.push(ClauseState::Unsatisfied {
-                unset_size: clause.literals.len(),
+                unset_size: clause.len(),
             });
         }
 

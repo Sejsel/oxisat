@@ -147,12 +147,19 @@ impl Clause {
         self.literals.push(Literal::new(variable, value))
     }
 
+    #[inline]
     fn is_empty(&self) -> bool {
         self.literals.is_empty()
     }
 
+    #[inline]
     fn is_unit(&self) -> bool {
-        self.literals.len() == 1
+        self.len() == 1
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.literals.len()
     }
 }
 
