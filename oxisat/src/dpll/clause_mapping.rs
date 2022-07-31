@@ -7,7 +7,7 @@
 use super::*;
 
 pub struct ClauseMappingState<TStats: StatsStorage> {
-    variables: Vec<VariableState>,
+    variables: VariableStates,
     cnf: CNF,
     change_stack: Vec<ChangeStackItem>,
     literal_to_clause_map: LiteralToClauseMap,
@@ -156,7 +156,7 @@ impl ClauseStates {
     }
 
     #[inline]
-    fn get_state(&self, clause_index: usize) -> ClauseState {
+    fn state(&self, clause_index: usize) -> ClauseState {
         self.states_by_index[clause_index]
     }
 
@@ -177,13 +177,12 @@ impl ClauseStates {
 }
 
 impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
-    fn new(cnf: &CNF, max_variable: Variable) -> Self {
+    fn new(cnf: CNF, max_variable: Variable) -> Self {
         ClauseMappingState {
-            // We allocate one extra element to make indexing trivial.
-            variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
-            literal_to_clause_map: LiteralToClauseMap::from_cnf(cnf, max_variable),
-            clauses: ClauseStates::from_cnf(cnf),
-            cnf: cnf.clone(),
+            variables: VariableStates::new_unset(max_variable),
+            literal_to_clause_map: LiteralToClauseMap::from_cnf(&cnf, max_variable),
+            clauses: ClauseStates::from_cnf(&cnf),
+            cnf,
             change_stack: Vec::new(),
             stats: Default::default(),
         }
@@ -250,13 +249,13 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
-        let variable_state = &mut self.variables[variable.number() as usize];
+        let variable_state = self.variables.get(variable);
 
         self.change_stack.push(ChangeStackItem::SetVariable {
             variable,
-            previous_state: *variable_state,
+            previous_state: variable_state,
         });
-        *variable_state = state;
+        self.variables.set(variable, state);
 
         if state != VariableState::Unset {
             let new_literal = Literal::new(
@@ -280,7 +279,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             for &clause in self.literal_to_clause_map.clauses(new_literal) {
                 self.change_stack.push(ChangeStackItem::SetClauseState {
                     clause_index: clause,
-                    previous_state: self.clauses.get_state(clause),
+                    previous_state: self.clauses.state(clause),
                 });
                 self.clauses.set_state(clause, ClauseState::Satisfied);
             }
@@ -288,7 +287,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             // All clauses that contain the negated literal have
             // it removed; moving towards unsatisfiability
             for &clause in self.literal_to_clause_map.clauses(!new_literal) {
-                let old_state = self.clauses.get_state(clause);
+                let old_state = self.clauses.state(clause);
                 if let ClauseState::Unsatisfied { unset_size: size } = old_state {
                     // We assume the literal only occurs once in the clause.
                     let new_size = size - 1usize;
@@ -345,21 +344,17 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             self.cnf.clauses[index]
                 .literals
                 .iter()
-                .find(|lit| self.variable_state(lit.variable()) == VariableState::Unset)
+                .find(|lit| self.variables.get(lit.variable()) == VariableState::Unset)
                 .cloned()
         })
     }
 }
 
 impl<TStats: StatsStorage> ClauseMappingState<TStats> {
-    #[inline]
-    fn variable_state(&self, variable: Variable) -> VariableState {
-        self.variables[variable.number() as usize]
-    }
-
     fn undo_variable_set_inner(&mut self, variable: Variable, previous_state: VariableState) {
-        let state = self.variables[variable.number() as usize];
-        self.variables[variable.number() as usize] = previous_state;
+        let state = self.variables.get(variable);
+        self.variables.set(variable, previous_state);
+
         if state != VariableState::Unset {
             let new_literal = Literal::new(
                 variable,

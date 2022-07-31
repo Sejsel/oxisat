@@ -22,7 +22,7 @@
 use super::*;
 
 pub struct CnfTransformingState<TStats: StatsStorage> {
-    variables: Vec<VariableState>,
+    variables: VariableStates,
     cnf: CNF,
     cnf_change_stack: Vec<CNFStackItem>,
     stats: TStats,
@@ -70,11 +70,11 @@ impl CNFChange {
 }
 
 impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
-    fn new(cnf: &CNF, max_variable: Variable) -> Self {
+    fn new(cnf: CNF, max_variable: Variable) -> Self {
         CnfTransformingState {
             // We allocate one extra element to make indexing trivial.
-            variables: vec![VariableState::Unset; (max_variable.number() + 1) as usize],
-            cnf: cnf.clone(),
+            variables: VariableStates::new_unset(max_variable),
+            cnf,
             cnf_change_stack: Vec::new(),
             stats: Default::default(),
         }
@@ -95,7 +95,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
                     variable,
                     previous_state,
                 }) => {
-                    self.variables[variable.number() as usize] = previous_state;
+                    self.variables.set(variable, previous_state);
                 }
                 None => panic!("Undoing a unit propagation that did not happen"),
             }
@@ -133,13 +133,13 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
     }
 
     fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome {
-        let variable_state = &mut self.variables[variable.number() as usize];
+        let variable_state = self.variables.get(variable);
 
         self.cnf_change_stack.push(CNFStackItem::SetVariable {
             variable,
-            previous_state: *variable_state,
+            previous_state: variable_state,
         });
-        *variable_state = state;
+        self.variables.set(variable, state);
 
         if state != VariableState::Unset {
             let new_literal = Literal::new(
@@ -227,7 +227,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
                     variable,
                     previous_state,
                 }) => {
-                    self.variables[variable.number() as usize] = previous_state;
+                    self.variables.set(variable, previous_state);
                     break;
                 }
                 None => panic!("Undoing a variable that has not been set"),

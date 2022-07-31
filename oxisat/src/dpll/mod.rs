@@ -1,10 +1,15 @@
 mod clause_mapping;
 mod cnf_transforming;
+mod preprocessing;
+
+#[cfg(test)]
+mod tests;
 
 use crate::dimacs;
 use crate::dimacs::Dimacs;
 use crate::dpll::clause_mapping::ClauseMappingState;
 use crate::dpll::cnf_transforming::CnfTransformingState;
+use crate::dpll::preprocessing::PreprocessingResult;
 
 /// The underlying type that is used to handle variables.
 /// This is a signed integer type.
@@ -132,50 +137,14 @@ impl Clause {
         }
     }
 
-    /// Adds a literal to the clause without checking whether this variable is already present.
-    ///
-    /// # Warning
-    /// Adding a literal that is already present will result in undefined behavior.
+    /// Adds a literal to the clause.
     pub fn add_literal(&mut self, literal: Literal) {
         self.literals.push(literal)
     }
 
     /// Adds a literal to the clause.
-    ///
-    /// Returns `false` if there is already a literal with this variable within this clause.
-    #[must_use]
-    pub fn add_literal_checked(&mut self, literal: Literal) -> bool {
-        if self.contains_variable(literal.variable()) {
-            false
-        } else {
-            self.literals.push(literal);
-            true
-        }
-    }
-
-    /// Adds a literal to the clause without checking whether this variable is already present.
-    ///
-    /// # Warning
-    /// Adding a literal that is already present will result in undefined behavior.
     pub fn add_variable(&mut self, variable: Variable, value: bool) {
         self.literals.push(Literal::new(variable, value))
-    }
-
-    /// Adds a literal to the clause.
-    ///
-    /// Returns `false` if there is already a literal with this variable within this clause.
-    #[must_use]
-    pub fn add_variable_checked(&mut self, variable: Variable, value: bool) -> bool {
-        if self.contains_variable(variable) {
-            false
-        } else {
-            self.literals.push(Literal::new(variable, value));
-            true
-        }
-    }
-
-    fn contains_variable(&self, variable: Variable) -> bool {
-        self.literals.iter().any(|x| x.variable() == variable)
     }
 
     fn is_empty(&self) -> bool {
@@ -223,7 +192,7 @@ impl CNF {
 }
 
 pub enum Solution {
-    Satisfiable(Vec<VariableState>),
+    Satisfiable(VariableStates),
     Unsatisfiable,
 }
 
@@ -239,8 +208,12 @@ pub fn solve<TStatistics: StatsStorage>(
 ) -> (Solution, TStatistics) {
     match implementation {
         Implementation::Default => solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf),
-        Implementation::CnfTransforming => solve_cnf::<CnfTransformingState<TStatistics>, TStatistics>(cnf),
-        Implementation::ClauseMapping => solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf),
+        Implementation::CnfTransforming => {
+            solve_cnf::<CnfTransformingState<TStatistics>, TStatistics>(cnf)
+        }
+        Implementation::ClauseMapping => {
+            solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf)
+        }
     }
 }
 
@@ -262,6 +235,43 @@ impl VariableState {
     pub fn unsatisfies(&self, literal: Literal) -> bool {
         let literal_state_negated: VariableState = (!literal.value()).into();
         *self == literal_state_negated
+    }
+}
+
+#[derive(Clone)]
+pub struct VariableStates(Vec<VariableState>);
+
+impl VariableStates {
+    fn new_unset(max_variable: Variable) -> Self {
+        // We allocate one extra element to make indexing trivial.
+        VariableStates(vec![
+            VariableState::Unset;
+            (max_variable.number() + 1) as usize
+        ])
+    }
+
+    fn empty() -> Self {
+        VariableStates(Vec::new())
+    }
+
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = &VariableState> {
+        self.0.iter()
+    }
+
+    #[inline]
+    pub fn get(&self, variable: Variable) -> VariableState {
+        self.0[variable.number() as usize]
+    }
+
+    #[inline]
+    fn set(&mut self, variable: Variable, new_state: VariableState) {
+        self.0[variable.number() as usize] = new_state
+    }
+
+    #[inline]
+    fn set_to_literal(&mut self, literal: Literal) {
+        self.set(literal.variable(), literal.value().into())
     }
 }
 
@@ -315,7 +325,7 @@ impl StatsStorage for Stats {
 }
 
 trait DpllState<TStats: StatsStorage> {
-    fn new(cnf: &CNF, max_variable: Variable) -> Self;
+    fn new(cnf: CNF, max_variable: Variable) -> Self;
     fn start_unit_propagation(&mut self);
     fn undo_last_unit_propagation(&mut self);
     fn all_clauses_satisfied(&self) -> bool;
@@ -342,28 +352,51 @@ enum SetVariableOutcome {
     Unsatisfiable,
 }
 
-fn solve_cnf<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(cnf: &CNF) -> (Solution, TStatistics) {
-    let max_variable = match cnf.max_variable() {
-        Some(max) => max,
-        None => {
-            return if cnf.clauses.is_empty() {
-                // CNF with no variables
-                (Solution::Satisfiable(Vec::new()), Default::default())
-            } else {
-                // There is an empty clause, which is unsatisfiable.
-                (Solution::Unsatisfiable, Default::default())
-            };
-        }
-    };
-
-    let mut state = TState::new(cnf, max_variable);
-    match dpll(&mut state) {
-        DpllDecisionOutcome::Satisfiable => state.into_result(),
-        DpllDecisionOutcome::Unsatisfiable => state.into_result(),
+fn solve_cnf_without_variables<TStats: StatsStorage>(cnf: &CNF) -> (Solution, TStats) {
+    if cnf.clauses.is_empty() {
+        // CNF with no variables
+        (
+            Solution::Satisfiable(VariableStates::empty()),
+            Default::default(),
+        )
+    } else {
+        // There is an empty clause, which is unsatisfiable.
+        (Solution::Unsatisfiable, Default::default())
     }
 }
 
-fn dpll<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(state: &mut TState) -> DpllDecisionOutcome {
+fn solve_cnf<TState: DpllState<TStats>, TStats: StatsStorage>(cnf: &CNF) -> (Solution, TStats) {
+    let max_variable = match cnf.max_variable() {
+        Some(max) => max,
+        None => return solve_cnf_without_variables(cnf),
+    };
+
+    let mut cnf = cnf.clone();
+    let preprocess_result = preprocessing::preprocess_cnf(&mut cnf, max_variable);
+
+    match preprocess_result {
+        PreprocessingResult::Unsatisfiable => (Solution::Unsatisfiable, Default::default()),
+        PreprocessingResult::Preprocessed {
+            new_max_variable, ..
+        } => {
+            if let Some(max_variable) = new_max_variable {
+                let mut state = TState::new(cnf, max_variable);
+
+                let _ = dpll(&mut state);
+                let (solution, stats) = state.into_result();
+
+                // Map from processed variable space to the pre-processing space.
+                (preprocess_result.reverse_map_solution(&solution), stats)
+            } else {
+                solve_cnf_without_variables(&cnf)
+            }
+        }
+    }
+}
+
+fn dpll<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(
+    state: &mut TState,
+) -> DpllDecisionOutcome {
     let propagation_result = unit_propagation(state);
 
     if propagation_result == UnitPropagationOutcome::Unsatisfiable {
@@ -403,108 +436,18 @@ enum UnitPropagationOutcome {
     Unsatisfiable,
 }
 
-fn unit_propagation<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(state: &mut TState) -> UnitPropagationOutcome {
+fn unit_propagation<TState: DpllState<TStatistics>, TStatistics: StatsStorage>(
+    state: &mut TState,
+) -> UnitPropagationOutcome {
     state.start_unit_propagation();
 
     while let Some(literal) = state.next_unit_literal() {
         state.stats().increment_unit_propagation_steps();
 
-        if state.set_variable_to_literal(literal) == SetVariableOutcome::Unsatisfiable
-        {
+        if state.set_variable_to_literal(literal) == SetVariableOutcome::Unsatisfiable {
             return UnitPropagationOutcome::Unsatisfiable;
         }
     }
 
     UnitPropagationOutcome::Finished
-}
-
-#[cfg(test)]
-#[generic_tests::define]
-mod tests {
-    use super::*;
-
-    #[instantiate_tests(<ClauseMappingState<NoStats>>)]
-    mod clause_mapping {}
-
-    #[instantiate_tests(<CnfTransformingState<NoStats>>)]
-    mod cnf_transforming {}
-
-    #[test]
-    fn three_variables_sat<TState: DpllState<NoStats>>() {
-        let mut cnf = CNF::new();
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(1), false);
-        clause.add_variable(Variable::new(2), true);
-        cnf.add_clause(clause);
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(2), false);
-        clause.add_variable(Variable::new(3), false);
-        cnf.add_clause(clause);
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(3), true);
-        clause.add_variable(Variable::new(4), false);
-        cnf.add_clause(clause);
-
-        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
-        assert!(matches!(solution, Solution::Satisfiable(_)));
-    }
-
-    #[test]
-    fn three_variables_unit_propagation_sat<TState: DpllState<NoStats>>() {
-        let mut cnf = CNF::new();
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(1), true);
-        cnf.add_clause(clause);
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(1), false);
-        clause.add_variable(Variable::new(2), true);
-        cnf.add_clause(clause);
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(2), false);
-        clause.add_variable(Variable::new(3), true);
-        cnf.add_clause(clause);
-
-        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
-        assert!(matches!(solution, Solution::Satisfiable(_)));
-    }
-
-    #[test]
-    fn empty_sat<TState: DpllState<NoStats>>() {
-        let cnf = CNF::new();
-
-        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
-        assert!(matches!(solution, Solution::Satisfiable(_)));
-    }
-
-    #[test]
-    fn empty_clause_unsat<TState: DpllState<NoStats>>() {
-        let mut cnf = CNF::new();
-        let clause = Clause::new();
-        cnf.add_clause(clause);
-
-        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
-        assert!(matches!(solution, Solution::Unsatisfiable));
-    }
-
-    #[test]
-    fn two_conflicting_clause_unsat<TState: DpllState<NoStats>>() {
-        let mut cnf = CNF::new();
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(1), false);
-        cnf.add_clause(clause);
-
-        let mut clause = Clause::new();
-        clause.add_variable(Variable::new(1), true);
-        cnf.add_clause(clause);
-
-        let solution = solve_cnf::<TState, NoStats>(&cnf).0;
-        assert!(matches!(solution, Solution::Unsatisfiable));
-    }
 }
