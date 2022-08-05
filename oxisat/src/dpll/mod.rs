@@ -400,17 +400,17 @@ fn solve_cnf<TState: DpllState<TStats>, TStats: StatsStorage>(cnf: &CNF) -> (Sol
         PreprocessingResult::Preprocessed {
             new_max_variable, ..
         } => {
-            if let Some(max_variable) = new_max_variable {
+            let (solution, stats) = if let Some(max_variable) = new_max_variable {
                 let mut state = TState::new(cnf, max_variable);
 
                 let _ = dpll(&mut state);
-                let (solution, stats) = state.into_result();
-
-                // Map from processed variable space to the pre-processing space.
-                (preprocess_result.reverse_map_solution(&solution), stats)
+                state.into_result()
             } else {
                 solve_cnf_without_variables(&cnf)
-            }
+            };
+
+            // Map from processed variable space to the pre-processing space.
+            (preprocess_result.reverse_map_solution(&solution), stats)
         }
     }
 }

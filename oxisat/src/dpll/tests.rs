@@ -14,7 +14,7 @@ mod dpll {
     mod watched_literals {}
 
     #[test]
-    fn three_variables_sat<TState: DpllState<NoStats>>() {
+    fn three_clause_sat<TState: DpllState<NoStats>>() {
         let mut cnf = CNF::new();
 
         let mut clause = Clause::new();
@@ -56,6 +56,16 @@ mod dpll {
 
         let solution = solve_cnf::<TState, NoStats>(&cnf).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
+
+        // This is checked to verify pre-processing variablevariable  mapping is reversed in case
+        // this is solved immediately during pre-processing.
+        match solution {
+            Solution::Satisfiable(solution) => {
+                // One extra for the unused 0 variable.
+                assert_eq!(solution.0.len(), 4);
+            }
+            Solution::Unsatisfiable => {}
+        }
     }
 
     #[test]
