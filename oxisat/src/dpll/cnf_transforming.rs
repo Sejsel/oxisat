@@ -72,7 +72,6 @@ impl CNFChange {
 impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
     fn new(cnf: CNF, max_variable: Variable) -> Self {
         CnfTransformingState {
-            // We allocate one extra element to make indexing trivial.
             variables: VariableStates::new_unset(max_variable),
             cnf,
             cnf_change_stack: Vec::new(),
