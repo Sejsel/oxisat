@@ -216,6 +216,10 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             let mut unsatisfiable = false;
 
             literal_watches.clauses.retain(|watched_clause| {
+                if unsatisfiable {
+                    return true;
+                }
+
                 let watches = &mut self.watched_literals.clauses[watched_clause.index];
                 let clause = &self.cnf.clauses[watched_clause.index];
 
