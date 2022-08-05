@@ -17,7 +17,7 @@ struct Args {
     #[clap(short, long)]
     no_stats: bool,
 
-    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllClauseMapping)]
+    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllWatchedLiterals)]
     implementation: Implementation,
 
     #[clap(group = "input")]
