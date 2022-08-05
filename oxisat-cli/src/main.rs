@@ -28,6 +28,7 @@ struct Args {
 enum Implementation {
     DpllCnfTransforming,
     DpllClauseMapping,
+    DpllWatchedLiterals,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -66,6 +67,7 @@ fn main() -> anyhow::Result<()> {
     let dpll_impl = match args.implementation {
         Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
         Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
+        Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,
     };
 
     let (solution, stats) = if !args.no_stats {

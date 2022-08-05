@@ -1,6 +1,7 @@
 mod clause_mapping;
 mod cnf_transforming;
 mod preprocessing;
+mod watched_literals;
 
 #[cfg(test)]
 mod tests;
@@ -9,6 +10,7 @@ use crate::dimacs;
 use crate::dimacs::Dimacs;
 use crate::dpll::clause_mapping::ClauseMappingState;
 use crate::dpll::cnf_transforming::CnfTransformingState;
+use crate::dpll::watched_literals::WatchedState;
 use crate::dpll::preprocessing::PreprocessingResult;
 
 /// The underlying type that is used to handle variables.
@@ -207,6 +209,7 @@ pub enum Implementation {
     Default,
     CnfTransforming,
     ClauseMapping,
+    WatchedLiterals,
 }
 
 pub fn solve<TStatistics: StatsStorage>(
@@ -221,6 +224,7 @@ pub fn solve<TStatistics: StatsStorage>(
         Implementation::ClauseMapping => {
             solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf)
         }
+        Implementation::WatchedLiterals => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf)
     }
 }
 
@@ -264,6 +268,16 @@ impl VariableStates {
     #[inline]
     pub fn iter(&self) -> impl Iterator<Item = &VariableState> {
         self.0.iter()
+    }
+
+    #[inline]
+    pub fn satisfies(&self, literal: Literal) -> bool {
+        self.get(literal.variable()).satisfies(literal)
+    }
+
+    #[inline]
+    pub fn unsatisfies(&self, literal: Literal) -> bool {
+        self.get(literal.variable()).unsatisfies(literal)
     }
 
     #[inline]
