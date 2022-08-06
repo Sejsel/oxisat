@@ -15,7 +15,6 @@ pub struct WatchedState<TStats: StatsStorage> {
     stats: TStats,
     unit_candidate_indices: Vec<usize>,
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
-    unset_var_count: usize,
 }
 
 enum ChangeStackItem {
@@ -130,7 +129,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             stats: Default::default(),
             // The CNF has no unit clauses; this is verified by the assert above.
             unit_candidate_indices: Vec::new(),
-            unset_var_count: max_variable.number() as usize,
         }
     }
 
@@ -156,10 +154,13 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
     #[inline]
     fn all_clauses_satisfied(&self) -> bool {
-        // This is valid as this is checked right *after* unit propagation.
-        // Any conflict leading to an empty clause has to happen through unit propagation, it is
-        // not possible to skip it as there is no mechanism to decide two variables at once.
-        self.unset_var_count == 0
+        for i in 0..self.cnf.clauses.len() {
+            if !self.is_satisfied(i) {
+                return false;
+            }
+        }
+
+        true
     }
 
     #[inline]
@@ -199,12 +200,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             previous_state: variable_state,
         });
         self.variables.set(variable, state);
-
-        if variable_state != VariableState::Unset && state == VariableState::Unset {
-            self.unset_var_count += 1;
-        } else if variable_state == VariableState::Unset && state != VariableState::Unset {
-            self.unset_var_count -= 1;
-        }
 
         if state != VariableState::Unset {
             let negated_literal = !Literal::new(
@@ -401,14 +396,6 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
     }
 
     fn undo_variable_set_inner(&mut self, variable: Variable, previous_state: VariableState) {
-        let current_state = self.variables.get(variable);
-
-        if current_state != VariableState::Unset && previous_state == VariableState::Unset {
-            self.unset_var_count += 1;
-        } else if current_state == VariableState::Unset && previous_state != VariableState::Unset {
-            self.unset_var_count -= 1;
-        }
-
         self.variables.set(variable, previous_state);
     }
 }
