@@ -110,11 +110,10 @@ fn main() -> anyhow::Result<()> {
                 .iter()
                 .enumerate()
                 .skip(1)
-                .filter(|(_, &state)| state != VariableState::Unset)
                 .map(|(i, state)| match state {
                     VariableState::True => format!("{i}"),
                     VariableState::False => format!("-{i}"),
-                    VariableState::Unset => unreachable!(),
+                    VariableState::Unset => format!("-{i}"), // Default to false for unset vars
                 })
                 .collect();
             println!("v {} 0", values.join(" "));
