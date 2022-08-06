@@ -244,35 +244,57 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
                 let mut updated = false;
 
-                // TODO: Rewrite going up from current literal pos and then start from 0 again.
-                //       (this is required for optimality)
-                //        see I. P. Gent. Optimal implementation of watched literals and more
-                //        general techniques (2013).
-                for (i, lit) in clause.literals.iter().enumerate() {
+                // We store watch updates for applying later as we are (correctly) prevented
+                // by the borrow checker from doing it here (we are already borrowing the
+                // current list from the vec, and there is nothing preventing us from
+                // finding the same literal, even though we do avoid that scenario by
+                // preprocessing). It might be possible to use split_at_mut and choose
+                // the correct slice depending on the index, but this solution is
+                // simpler and correctly handles duplicate literals within one clause.
+
+                // Instead of allocating a Vec buffer for this every time, we keep one Vec
+                // that we clear after every update and reuse it.
+
+                // Going up from current literal pos and then start from 0 again.
+                // This is required for optimality; see I. P. Gent. Optimal implementation
+                // of watched literals and more general techniques (2013).
+
+                for (i, &lit) in clause.literals[watch.index + 1..].iter().enumerate() {
+                    let index = i + watch.index + 1;
                     if (self.variables.get(lit.variable()) == VariableState::Unset
-                        || self.variables.satisfies(*lit))
-                        && i != other_watch.index
+                        || self.variables.satisfies(lit))
+                        && index != other_watch.index
                     {
-                        watch.index = i;
+                        watch.index = index;
 
-                        // We store watch updates for applying later as we are (correctly) prevented
-                        // by the borrow checker from doing it here (we are already borrowing the
-                        // current list from the vec, and there is nothing preventing us from
-                        // finding the same literal, even though we do avoid that scenario by
-                        // preprocessing). It might be possible to use split_at_mut and choose
-                        // the correct slice depending on the index, but this solution is
-                        // simpler and correctly handles duplicate literals within one clause.
-
-                        // Instead of allocating a Vec buffer for this every time, we keep one Vec
-                        // that we clear after every update and reuse it.
                         self.newly_watched_clauses.push((
-                            *lit,
+                            lit,
                             WatchedClause {
                                 index: watched_clause.index,
                             },
                         ));
                         updated = true;
                         break;
+                    }
+                }
+
+                if !updated {
+                    for (i, &lit) in clause.literals[0..watch.index].iter().enumerate() {
+                        if (self.variables.get(lit.variable()) == VariableState::Unset
+                            || self.variables.satisfies(lit))
+                            && i != other_watch.index
+                        {
+                            watch.index = i;
+
+                            self.newly_watched_clauses.push((
+                                lit,
+                                WatchedClause {
+                                    index: watched_clause.index,
+                                },
+                            ));
+                            updated = true;
+                            break;
+                        }
                     }
                 }
 
