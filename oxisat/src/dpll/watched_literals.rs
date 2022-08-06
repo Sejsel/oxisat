@@ -13,6 +13,7 @@ pub struct WatchedState<TStats: StatsStorage> {
     watched_literals: WatchedLiteralMap,
     stats: TStats,
     unit_candidate_indices: Vec<usize>,
+    kept_watches: Vec<WatchedClause>,
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
 }
 
@@ -126,6 +127,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             stats: Default::default(),
             // The CNF has no unit clauses; this is verified by the assert above.
             unit_candidate_indices: Vec::new(),
+            kept_watches: Vec::new(),
         }
     }
 
@@ -213,7 +215,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             let literal_watches =
                 &mut self.watched_literals.literals[WatchedLiteralMap::literal_index(negated_literal)];
 
-            let mut kept_watches = Vec::new();
 
             for (i, watched_clause) in literal_watches.clauses.iter().enumerate() {
                 let watches = &mut self.watched_literals.clauses[watched_clause.index];
@@ -231,13 +232,13 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 if self.variables.satisfies(other_watch_lit) {
                     // This is already satisfied; we do nothing. This is valid as long as we
                     // never undo the satisfaction when continuing deeper into the search tree.
-                    kept_watches.push(*watched_clause);
+                    self.kept_watches.push(*watched_clause);
                     continue;
                 }
 
                 if self.variables.satisfies(clause.literals[watch.index]) {
                     // This is newly satisfied, we do nothing in this clause.
-                    kept_watches.push(*watched_clause);
+                    self.kept_watches.push(*watched_clause);
                     continue;
                 }
 
@@ -276,7 +277,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 }
 
                 if !updated {
-                    kept_watches.push(*watched_clause);
+                    self.kept_watches.push(*watched_clause);
                     // No space for this = this clause is unit or empty
                     // We have already checked if it's satisfied from the other watch, so
                     // that cannot be the case. There are only two possibilities remaining:
@@ -287,18 +288,20 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                         self.unit_candidate_indices.push(watched_clause.index);
                     } else {
                         // Add remaining clauses as well.
-                        // We rely on vec[vec.len()..] = [] here, note that slicing panics
-                        // with higher starting values.
-                        kept_watches.extend_from_slice(&literal_watches.clauses[i+1..]);
+                        // We rely on vec[vec.len()..] = [] here; slicing panics
+                        // with higher starting values, but vec.len() is fine.
+                        self.kept_watches.extend_from_slice(&literal_watches.clauses[i+1..]);
+                        literal_watches.clauses.clear();
 
-                        literal_watches.clauses = kept_watches;
+                        std::mem::swap(&mut self.kept_watches, &mut literal_watches.clauses);
                         self.apply_newly_watched_clauses();
                         return SetVariableOutcome::Unsatisfiable;
                     }
                 }
             }
 
-            literal_watches.clauses = kept_watches;
+            literal_watches.clauses.clear();
+            std::mem::swap(&mut self.kept_watches, &mut literal_watches.clauses);
             self.apply_newly_watched_clauses();
         }
 
