@@ -5,6 +5,7 @@
 //! - O(?) undo set variable variable
 //! - O(?) find unset variable
 use super::*;
+use std::mem;
 
 pub struct WatchedState<TStats: StatsStorage> {
     variables: VariableStates,
@@ -13,7 +14,6 @@ pub struct WatchedState<TStats: StatsStorage> {
     watched_literals: WatchedLiteralMap,
     stats: TStats,
     unit_candidate_indices: Vec<usize>,
-    kept_watches: Vec<WatchedClause>,
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
 }
 
@@ -32,12 +32,14 @@ struct WatchedClause {
 
 struct LiteralWatches {
     clauses: Vec<WatchedClause>,
+    clauses_new: Vec<WatchedClause>,
 }
 
 impl LiteralWatches {
     pub fn new() -> Self {
         LiteralWatches {
             clauses: Vec::new(),
+            clauses_new: Vec::new(),
         }
     }
 }
@@ -127,7 +129,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             stats: Default::default(),
             // The CNF has no unit clauses; this is verified by the assert above.
             unit_candidate_indices: Vec::new(),
-            kept_watches: Vec::new(),
         }
     }
 
@@ -212,11 +213,10 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
             // Unfortunately, we cannot use helper methods here as the borrow checker wouldn't
             // understand that we are borrowing separate parts (literals/clauses) of the struct.
-            let literal_watches =
-                &mut self.watched_literals.literals[WatchedLiteralMap::literal_index(negated_literal)];
+            let literal_watches = &mut self.watched_literals.literals
+                [WatchedLiteralMap::literal_index(negated_literal)];
 
-
-            for (i, watched_clause) in literal_watches.clauses.iter().enumerate() {
+            for (i, &watched_clause) in literal_watches.clauses.iter().enumerate() {
                 let watches = &mut self.watched_literals.clauses[watched_clause.index];
                 let clause = &self.cnf.clauses[watched_clause.index];
 
@@ -232,13 +232,13 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 if self.variables.satisfies(other_watch_lit) {
                     // This is already satisfied; we do nothing. This is valid as long as we
                     // never undo the satisfaction when continuing deeper into the search tree.
-                    self.kept_watches.push(*watched_clause);
+                    literal_watches.clauses_new.push(watched_clause);
                     continue;
                 }
 
                 if self.variables.satisfies(clause.literals[watch.index]) {
                     // This is newly satisfied, we do nothing in this clause.
-                    self.kept_watches.push(*watched_clause);
+                    literal_watches.clauses_new.push(watched_clause);
                     continue;
                 }
 
@@ -277,7 +277,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 }
 
                 if !updated {
-                    self.kept_watches.push(*watched_clause);
+                    literal_watches.clauses_new.push(watched_clause);
                     // No space for this = this clause is unit or empty
                     // We have already checked if it's satisfied from the other watch, so
                     // that cannot be the case. There are only two possibilities remaining:
@@ -290,18 +290,26 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                         // Add remaining clauses as well.
                         // We rely on vec[vec.len()..] = [] here; slicing panics
                         // with higher starting values, but vec.len() is fine.
-                        self.kept_watches.extend_from_slice(&literal_watches.clauses[i+1..]);
-                        literal_watches.clauses.clear();
+                        literal_watches
+                            .clauses_new
+                            .extend_from_slice(&literal_watches.clauses[i + 1..]);
 
-                        std::mem::swap(&mut self.kept_watches, &mut literal_watches.clauses);
+                        mem::swap(
+                            &mut literal_watches.clauses,
+                            &mut literal_watches.clauses_new,
+                        );
+                        literal_watches.clauses_new.clear();
                         self.apply_newly_watched_clauses();
                         return SetVariableOutcome::Unsatisfiable;
                     }
                 }
             }
 
-            literal_watches.clauses.clear();
-            std::mem::swap(&mut self.kept_watches, &mut literal_watches.clauses);
+            mem::swap(
+                &mut literal_watches.clauses,
+                &mut literal_watches.clauses_new,
+            );
+            literal_watches.clauses_new.clear();
             self.apply_newly_watched_clauses();
         }
 
