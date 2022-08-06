@@ -213,13 +213,9 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             let literal_watches =
                 &mut self.watched_literals.literals[WatchedLiteralMap::literal_index(negated_literal)];
 
-            let mut unsatisfiable = false;
+            let mut kept_watches = Vec::new();
 
-            literal_watches.clauses.retain(|watched_clause| {
-                if unsatisfiable {
-                    return true;
-                }
-
+            for (i, watched_clause) in literal_watches.clauses.iter().enumerate() {
                 let watches = &mut self.watched_literals.clauses[watched_clause.index];
                 let clause = &self.cnf.clauses[watched_clause.index];
 
@@ -235,12 +231,14 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 if self.variables.satisfies(other_watch_lit) {
                     // This is already satisfied; we do nothing. This is valid as long as we
                     // never undo the satisfaction when continuing deeper into the search tree.
-                    return true;
+                    kept_watches.push(*watched_clause);
+                    continue;
                 }
 
                 if self.variables.satisfies(clause.literals[watch.index]) {
                     // This is newly satisfied, we do nothing in this clause.
-                    return true;
+                    kept_watches.push(*watched_clause);
+                    continue;
                 }
 
                 let mut updated = false;
@@ -278,6 +276,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 }
 
                 if !updated {
+                    kept_watches.push(*watched_clause);
                     // No space for this = this clause is unit or empty
                     // We have already checked if it's satisfied from the other watch, so
                     // that cannot be the case. There are only two possibilities remaining:
@@ -287,25 +286,20 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                     if self.variables.get(other_watch_lit.variable()) == VariableState::Unset {
                         self.unit_candidate_indices.push(watched_clause.index);
                     } else {
-                        // We do not currently have any nice way to stop iteration early (can't
-                        // really interrupt the retain without reimplementing it). We also need to
-                        // apply newly_watched_clauses.
-                        unsatisfiable = true;
+                        // Add remaining clauses as well.
+                        // We rely on vec[vec.len()..] = [] here, note that slicing panics
+                        // with higher starting values.
+                        kept_watches.extend_from_slice(&literal_watches.clauses[i+1..]);
+
+                        literal_watches.clauses = kept_watches;
+                        self.apply_newly_watched_clauses();
+                        return SetVariableOutcome::Unsatisfiable;
                     }
                 }
-
-                !updated
-            });
-
-            for (literal, watch) in &self.newly_watched_clauses {
-                let literal_watches = &mut self.watched_literals.literal_mut(*literal);
-                literal_watches.clauses.push(*watch);
             }
-            self.newly_watched_clauses.clear();
 
-            if unsatisfiable {
-                return SetVariableOutcome::Unsatisfiable;
-            }
+            literal_watches.clauses = kept_watches;
+            self.apply_newly_watched_clauses();
         }
 
         SetVariableOutcome::Ok
@@ -346,6 +340,14 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 }
 
 impl<TStats: StatsStorage> WatchedState<TStats> {
+    fn apply_newly_watched_clauses(&mut self) {
+        for (literal, watch) in &self.newly_watched_clauses {
+            let literal_watches = &mut self.watched_literals.literal_mut(*literal);
+            literal_watches.clauses.push(*watch);
+        }
+        self.newly_watched_clauses.clear();
+    }
+
     fn next_unit_clause(&mut self) -> Option<usize> {
         // Unit clause candidates may also contain clauses that are not unit anymore.
         // We remove all the clauses from the end that are not unit anymore.
