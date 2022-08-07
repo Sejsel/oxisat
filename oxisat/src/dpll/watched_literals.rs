@@ -267,12 +267,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                     {
                         watch.index = index;
 
-                        self.newly_watched_clauses.push((
-                            lit,
-                            WatchedClause {
-                                index: watched_clause.index,
-                            },
-                        ));
                         updated = true;
                         break;
                     }
@@ -286,16 +280,19 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                         {
                             watch.index = i;
 
-                            self.newly_watched_clauses.push((
-                                lit,
-                                WatchedClause {
-                                    index: watched_clause.index,
-                                },
-                            ));
                             updated = true;
                             break;
                         }
                     }
+                }
+
+                if updated {
+                    self.newly_watched_clauses.push((
+                        clause.literals[watch.index],
+                        WatchedClause {
+                            index: watched_clause.index,
+                        },
+                    ));
                 }
 
                 if !updated {
