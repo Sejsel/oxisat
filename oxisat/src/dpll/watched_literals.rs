@@ -221,10 +221,10 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 let clause = &self.cnf.clauses[watched_clause.index];
 
                 let (mut watch, other_watch) =
-                    if clause.literals[watches.watch1.index].variable() == variable {
+                    if clause.literals[watches.watch1.index] == negated_literal {
                         (&mut watches.watch1, &watches.watch2)
                     } else {
-                        debug_assert!(clause.literals[watches.watch2.index].variable() == variable);
+                        debug_assert!(clause.literals[watches.watch2.index] == negated_literal);
                         (&mut watches.watch2, &watches.watch1)
                     };
 
@@ -232,12 +232,6 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 if self.variables.satisfies(other_watch_lit) {
                     // This is already satisfied; we do nothing. This is valid as long as we
                     // never undo the satisfaction when continuing deeper into the search tree.
-                    literal_watches.clauses_new.push(watched_clause);
-                    continue;
-                }
-
-                if self.variables.satisfies(clause.literals[watch.index]) {
-                    // This is newly satisfied, we do nothing in this clause.
                     literal_watches.clauses_new.push(watched_clause);
                     continue;
                 }
