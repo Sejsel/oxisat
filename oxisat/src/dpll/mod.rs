@@ -281,6 +281,11 @@ impl VariableStates {
     }
 
     #[inline]
+    pub fn is_unset(&self, variable: Variable) -> bool {
+        self.get(variable) == VariableState::Unset
+    }
+
+    #[inline]
     pub fn get(&self, variable: Variable) -> VariableState {
         self.0[variable.number() as usize]
     }

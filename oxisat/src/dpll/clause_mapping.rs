@@ -344,7 +344,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             self.cnf.clauses[index]
                 .literals
                 .iter()
-                .find(|lit| self.variables.get(lit.variable()) == VariableState::Unset)
+                .find(|lit| self.variables.is_unset(lit.variable()))
                 .cloned()
         })
     }

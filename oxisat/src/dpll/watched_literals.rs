@@ -261,7 +261,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
                 for (i, &lit) in clause.literals[watch.index + 1..].iter().enumerate() {
                     let index = i + watch.index + 1;
-                    if (self.variables.get(lit.variable()) == VariableState::Unset
+                    if (self.variables.is_unset(lit.variable())
                         || self.variables.satisfies(lit))
                         && index != other_watch.index
                     {
@@ -274,7 +274,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
                 if !updated {
                     for (i, &lit) in clause.literals[0..watch.index].iter().enumerate() {
-                        if (self.variables.get(lit.variable()) == VariableState::Unset
+                        if (self.variables.is_unset(lit.variable())
                             || self.variables.satisfies(lit))
                             && i != other_watch.index
                         {
@@ -303,7 +303,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                     // - other watch is unset, this clause has now become unit
                     // - other watch is set, this clause is currently queued as unit (from
                     //   the other watches viewpoint), but it is ultimately unsatisfiable.
-                    if self.variables.get(other_watch_lit.variable()) == VariableState::Unset {
+                    if self.variables.is_unset(other_watch_lit.variable()) {
                         self.unit_candidate_indices.push(watched_clause.index);
                     } else {
                         // Add remaining clauses as well.
@@ -360,10 +360,10 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
         let watch = self.watched_literals.clause(clause_index);
         let lit1 = self.cnf.clauses[clause_index].literals[watch.watch1.index];
         let lit2 = self.cnf.clauses[clause_index].literals[watch.watch2.index];
-        if self.variables.get(lit1.variable()) == VariableState::Unset {
+        if self.variables.is_unset(lit1.variable()) {
             Some(lit1)
         } else {
-            debug_assert!(self.variables.get(lit2.variable()) == VariableState::Unset);
+            debug_assert!(self.variables.is_unset(lit2.variable()));
             Some(lit2)
         }
     }
