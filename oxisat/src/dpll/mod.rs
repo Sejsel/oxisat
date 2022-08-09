@@ -302,6 +302,7 @@ impl VariableStates {
 }
 
 impl From<bool> for VariableState {
+    #[inline]
     fn from(value: bool) -> Self {
         if value {
             VariableState::True
