@@ -230,9 +230,9 @@ pub fn solve<TStatistics: StatsStorage>(
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum VariableState {
+    False = 0,
+    True = 1,
     Unset,
-    True,
-    False,
 }
 
 impl VariableState {
