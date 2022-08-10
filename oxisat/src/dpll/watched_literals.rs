@@ -243,8 +243,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 //        see I. P. Gent. Optimal implementation of watched literals and more
                 //        general techniques (2013).
                 for (i, lit) in clause.literals.iter().enumerate() {
-                    if (self.variables.get(lit.variable()) == VariableState::Unset
-                        || self.variables.satisfies(*lit))
+                    if (self.variables.is_unset(lit.variable()) || self.variables.satisfies(*lit))
                         && i != other_watch.index
                     {
                         watch.index = i;
