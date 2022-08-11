@@ -57,7 +57,7 @@ mod dpll {
         let solution = solve_cnf::<TState, NoStats>(&cnf).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
 
-        // This is checked to verify pre-processing variablevariable  mapping is reversed in case
+        // This is checked to verify pre-processing variable mapping is reversed in case
         // this is solved immediately during pre-processing.
         match solution {
             Solution::Satisfiable(solution) => {
