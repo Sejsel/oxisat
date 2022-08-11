@@ -1,9 +1,12 @@
-//! TODO
+//! An implementation which uses the watched literals data structure to detect unit clauses.
+//! This implementation has two major benefits:
+//! - setting a variable only requires updates for watched literals, not all of them
+//! - backtracking is almost free (no need to update watched literals)
 //!
-//! - O(?) amortized find unit clause + O(?) find the unit literal within
-//! - O(?) set variable
-//! - O(?) undo set variable variable
-//! - O(?) find unset variable
+//! - O(1) amortized find unit clause + O(1) find the unit literal within
+//! - O(#clauses (watched ones)) set variable
+//! - O(1) undo set variable
+//! - O(#vars) find unset variable
 use super::*;
 use std::mem;
 

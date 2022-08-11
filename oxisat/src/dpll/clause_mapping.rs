@@ -2,7 +2,7 @@
 //!
 //! - O(1) amortized find unit clause + O(#lits in clause) find the unit literal within
 //! - O(#clauses with var) set variable
-//! - O(#clauses with var) undo set variable variable
+//! - O(#clauses with var) undo set variable
 //! - O(#vars) find unset variable (an O(1) amortized implementation performed worse)
 use super::*;
 
