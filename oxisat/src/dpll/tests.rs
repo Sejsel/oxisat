@@ -126,4 +126,520 @@ mod dpll {
         let solution = solve_cnf::<TState, NoStats>(&cnf).0;
         assert!(matches!(solution, Solution::Unsatisfiable));
     }
+
+    macro_rules! solve_cadical_test {
+        ($name:expr) => {{
+            let input = include_str!(concat!("../../tests/cnf/cadical/", $name, ".cnf"));
+            let (_, dimacs) = dimacs::parse(input).expect("failed to parse");
+            let cnf = CNF::from(dimacs);
+            solve_cnf::<TState, NoStats>(&cnf).0
+        }};
+    }
+
+    #[test]
+    fn cadical_empty<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("empty");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+    #[test]
+    fn cadical_false<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("false");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_unit0<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit0");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_unit1<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit1");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_unit2<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit2");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_unit3<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit3");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_unit4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit4");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_unit5<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit5");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_unit6<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit6");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_unit7<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("unit7");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_sub0<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sub0");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat0<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat0");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_sat1<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat1");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat2<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat2");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat3<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat3");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat4");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat5<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat5");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_sat6<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat6");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat7<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat7");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat8<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat8");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat9<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat9");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat10<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat10");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat11<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat11");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat12<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat12");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sat13<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sat13");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_full1<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full1");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full2<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full2");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full3<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full3");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full4");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full5<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full5");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full6<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full6");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_full7<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("full7");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_regr000<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("regr000");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_elimclash<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("elimclash");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_elimredundant<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("elimredundant");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_block0<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("block0");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime4");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime9<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime9");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime25<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime25");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime49<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime49");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime121<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime121");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime169<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime169");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime361<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime361");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime289<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime289");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime529<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime529");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime841<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime841");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime961<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime961");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime1369<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime1369");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime1681<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime1681");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime1849<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime1849");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_prime2209<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime2209");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_factor2708413neg<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("factor2708413neg");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_factor2708413pos<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("factor2708413pos");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt2809<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt2809");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt3481<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt3481");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt3721<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt3721");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt4489<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt4489");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt5041<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt5041");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt5329<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt5329");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt6241<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt6241");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt6889<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt6889");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt7921<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt7921");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt9409<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt9409");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt10201<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt10201");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt10609<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt10609");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt11449<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt11449");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt11881<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt11881");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt12769<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt12769");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt16129<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt16129");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt63001<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt63001");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt259081<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt259081");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_sqrt1042441<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("sqrt1042441");
+        assert!(matches!(solution, Solution::Satisfiable(_)));
+    }
+
+    #[test]
+    fn cadical_ph2<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("ph2");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_ph3<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("ph3");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_ph4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("ph4");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_ph5<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("ph5");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_ph6<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("ph6");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_add4<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add4");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    /*
+    The following tests take too long for comfortable testing with pure DPLL:
+
+    #[test]
+    fn cadical_add8<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add8");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_add16<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add16");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_add32<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add32");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_add64<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add64");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_add128<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("add128");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+
+    #[test]
+    fn cadical_prime65537<TState: DpllState<NoStats>>() {
+        let solution = solve_cadical_test!("prime65537");
+        assert!(matches!(solution, Solution::Unsatisfiable));
+    }
+    */
 }

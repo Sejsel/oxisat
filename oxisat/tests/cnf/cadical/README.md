@@ -3,6 +3,8 @@
 This directory contains CNF instances in the DIMACS format. These instances come from the CaDiCaL SAT solver where they
 are used for testing its functionality.
 
+Some files (sat1-sat13, except sat5) were modified to remove commented out clauses in the clause list.
+
 ## License
 The CNF files come from the CaDiCaL repository which is licensed under the following license:
 
