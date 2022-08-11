@@ -353,8 +353,7 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
 
             let lit = clause.literals[index];
 
-            if variables.is_unset(lit.variable()) || variables.satisfies(lit)
-            {
+            if variables.is_unset(lit.variable()) || variables.satisfies(lit) {
                 watch.index = index;
                 newly_watched_clauses.push((
                     lit,
@@ -368,31 +367,27 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
             // See I. P. Gent. Optimal implementation of watched literals and more
             // general techniques (2013).
 
-            for (i, &lit) in clause.literals[watch.index + 1..].iter().enumerate() {
-                let index = i + watch.index + 1;
-                if (variables.is_unset(lit.variable())
-                    || variables.satisfies(lit))
-                    && index != other_watch.index
+            let mut i = watch.index + 1;
+            loop {
+                if i >= clause.literals.len() {
+                    i = 0;
+                }
+
+                if i == watch.index {
+                    break;
+                }
+
+                let lit = clause.literals[i];
+                if (variables.is_unset(lit.variable()) || variables.satisfies(lit))
+                    && i != other_watch.index
                 {
-                    watch.index = index;
+                    watch.index = i;
 
                     updated = true;
                     break;
                 }
-            }
 
-            if !updated {
-                for (i, &lit) in clause.literals[0..watch.index].iter().enumerate() {
-                    if (variables.is_unset(lit.variable())
-                        || variables.satisfies(lit))
-                        && i != other_watch.index
-                    {
-                        watch.index = i;
-
-                        updated = true;
-                        break;
-                    }
-                }
+                i += 1;
             }
 
             if updated {
