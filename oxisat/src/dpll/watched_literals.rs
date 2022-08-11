@@ -220,70 +220,25 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 [WatchedLiteralMap::literal_index(negated_literal)];
 
             for (i, &watched_clause) in literal_watches.clauses.iter().enumerate() {
-                let watches = &mut self.watched_literals.clauses[watched_clause.index];
-                let clause = &self.cnf.clauses[watched_clause.index];
-
-                let (mut watch, other_watch) =
-                    if clause.literals[watches.watch1.index] == negated_literal {
-                        (&mut watches.watch1, &watches.watch2)
-                    } else {
-                        debug_assert!(clause.literals[watches.watch2.index] == negated_literal);
-                        (&mut watches.watch2, &watches.watch1)
-                    };
-
-                let other_watch_lit = clause.literals[other_watch.index];
-                if self.variables.satisfies(other_watch_lit) {
-                    // This is already satisfied; we do nothing. This is valid as long as we
-                    // never undo the satisfaction when continuing deeper into the search tree.
-                    literal_watches.clauses_new.push(watched_clause);
-                    continue;
-                }
-
-                let mut updated = false;
-
-                // TODO: Rewrite going up from current literal pos and then start from 0 again.
-                //       (this is required for optimality)
-                //        see I. P. Gent. Optimal implementation of watched literals and more
-                //        general techniques (2013).
-                for (i, lit) in clause.literals.iter().enumerate() {
-                    if (self.variables.is_unset(lit.variable()) || self.variables.satisfies(*lit))
-                        && i != other_watch.index
-                    {
-                        watch.index = i;
-
-                        // We store watch updates for applying later as we are (correctly) prevented
-                        // by the borrow checker from doing it here (we are already borrowing the
-                        // current list from the vec, and there is nothing preventing us from
-                        // finding the same literal, even though we do avoid that scenario by
-                        // preprocessing). It might be possible to use split_at_mut and choose
-                        // the correct slice depending on the index, but this solution is
-                        // simpler and correctly handles duplicate literals within one clause.
-
-                        // Instead of allocating a Vec buffer for this every time, we keep one Vec
-                        // that we clear after every update and reuse it.
-                        self.newly_watched_clauses.push((
-                            *lit,
-                            WatchedClause {
-                                index: watched_clause.index,
-                            },
-                        ));
-
-                        updated = true;
-                        break;
+                let update_result = Self::update_watches(
+                    negated_literal,
+                    &watched_clause,
+                    &self.variables,
+                    &mut self.watched_literals.clauses,
+                    &mut self.newly_watched_clauses,
+                    &self.cnf.clauses,
+                );
+                match update_result {
+                    WatchUpdateResult::Unchanged => {
+                        literal_watches.clauses_new.push(watched_clause);
                     }
-                }
-
-                if !updated {
-                    literal_watches.clauses_new.push(watched_clause);
-                    // No space for this = this clause is unit or empty
-                    // We have already checked if it's satisfied from the other watch, so
-                    // that cannot be the case. There are only two possibilities remaining:
-                    // - other watch is unset, this clause has now become unit
-                    // - other watch is set, this clause is currently queued as unit (from
-                    //   the other watches viewpoint), but it is ultimately unsatisfiable.
-                    if self.variables.is_unset(other_watch_lit.variable()) {
+                    WatchUpdateResult::Changed => {}
+                    WatchUpdateResult::NewUnit => {
+                        literal_watches.clauses_new.push(watched_clause);
                         self.unit_candidate_indices.push(watched_clause.index);
-                    } else {
+                    }
+                    WatchUpdateResult::Unsatisfiable => {
+                        literal_watches.clauses_new.push(watched_clause);
                         // Add remaining clauses as well.
                         // We rely on vec[vec.len()..] = [] here; slicing panics
                         // with higher starting values, but vec.len() is fine.
@@ -344,6 +299,91 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             debug_assert!(self.variables.is_unset(lit2.variable()));
             Some(lit2)
         }
+    }
+}
+
+enum WatchUpdateResult {
+    Unchanged,
+    Changed,
+    NewUnit,
+    Unsatisfiable,
+}
+
+impl<TStats: StatsStorage> WatchedState<TStats> {
+    fn update_watches(
+        literal: Literal,
+        watched_clause: &WatchedClause,
+        variables: &VariableStates,
+        clause_watches: &mut [ClauseWatches],
+        newly_watched_clauses: &mut Vec<(Literal, WatchedClause)>,
+        cnf_clauses: &[Clause],
+    ) -> WatchUpdateResult {
+        let watches = &mut clause_watches[watched_clause.index];
+        let clause = &cnf_clauses[watched_clause.index];
+
+        let (mut watch, other_watch) = if clause.literals[watches.watch1.index] == literal {
+            (&mut watches.watch1, &watches.watch2)
+        } else {
+            debug_assert!(clause.literals[watches.watch2.index] == literal);
+            (&mut watches.watch2, &watches.watch1)
+        };
+
+        let other_watch_lit = clause.literals[other_watch.index];
+        if variables.satisfies(other_watch_lit) {
+            // This is already satisfied; we do nothing. This is valid as long as we
+            // never undo the satisfaction when continuing deeper into the search tree.
+            return WatchUpdateResult::Unchanged;
+        }
+
+        let mut updated = false;
+
+        // TODO: Rewrite going up from current literal pos and then start from 0 again.
+        //       (this is required for optimality)
+        //        see I. P. Gent. Optimal implementation of watched literals and more
+        //        general techniques (2013).
+        for (i, lit) in clause.literals.iter().enumerate() {
+            if (variables.is_unset(lit.variable()) || variables.satisfies(*lit))
+                && i != other_watch.index
+            {
+                watch.index = i;
+
+                // We store watch updates for applying later as we are (correctly) prevented
+                // by the borrow checker from doing it here (we are already borrowing the
+                // current list from the vec, and there is nothing preventing us from
+                // finding the same literal, even though we do avoid that scenario by
+                // preprocessing). It might be possible to use split_at_mut and choose
+                // the correct slice depending on the index, but this solution is
+                // simpler and correctly handles duplicate literals within one clause.
+
+                // Instead of allocating a Vec buffer for this every time, we keep one Vec
+                // that we clear after every update and reuse it.
+                newly_watched_clauses.push((
+                    *lit,
+                    WatchedClause {
+                        index: watched_clause.index,
+                    },
+                ));
+
+                updated = true;
+                break;
+            }
+        }
+
+        if !updated {
+            // No space for this = this clause is unit or empty
+            // We have already checked if it's satisfied from the other watch, so
+            // that cannot be the case. There are only two possibilities remaining:
+            // - other watch is unset, this clause has now become unit
+            // - other watch is set, this clause is currently queued as unit (from
+            //   the other watches viewpoint), but it is ultimately unsatisfiable.
+            return if variables.is_unset(other_watch_lit.variable()) {
+                WatchUpdateResult::NewUnit
+            } else {
+                WatchUpdateResult::Unsatisfiable
+            };
+        }
+
+        WatchUpdateResult::Changed
     }
 }
 
