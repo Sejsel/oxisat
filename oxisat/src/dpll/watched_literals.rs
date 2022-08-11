@@ -228,6 +228,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                     &mut self.newly_watched_clauses,
                     &self.cnf.clauses,
                 );
+
                 match update_result {
                     WatchUpdateResult::Unchanged => {
                         literal_watches.clauses_new.push(watched_clause);
@@ -337,35 +338,63 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
 
         let mut updated = false;
 
-        // TODO: Rewrite going up from current literal pos and then start from 0 again.
-        //       (this is required for optimality)
-        //        see I. P. Gent. Optimal implementation of watched literals and more
-        //        general techniques (2013).
-        for (i, lit) in clause.literals.iter().enumerate() {
-            if (variables.is_unset(lit.variable()) || variables.satisfies(*lit))
-                && i != other_watch.index
+        if clause.len() == 2 {
+            // We can never move the watches for clauses with 2 literals.
+        } else if clause.len() == 3 {
+            debug_assert_ne!(watch.index, other_watch.index);
+
+            let index = if watch.index != 0 && other_watch.index != 0 {
+                0
+            } else if watch.index != 1 && other_watch.index != 1 {
+                1
+            } else {
+                2
+            };
+
+            let lit = clause.literals[index];
+
+            if variables.is_unset(lit.variable()) || variables.satisfies(lit)
             {
-                watch.index = i;
-
-                // We store watch updates for applying later as we are (correctly) prevented
-                // by the borrow checker from doing it here (we are already borrowing the
-                // current list from the vec, and there is nothing preventing us from
-                // finding the same literal, even though we do avoid that scenario by
-                // preprocessing). It might be possible to use split_at_mut and choose
-                // the correct slice depending on the index, but this solution is
-                // simpler and correctly handles duplicate literals within one clause.
-
-                // Instead of allocating a Vec buffer for this every time, we keep one Vec
-                // that we clear after every update and reuse it.
+                watch.index = index;
                 newly_watched_clauses.push((
-                    *lit,
+                    lit,
                     WatchedClause {
                         index: watched_clause.index,
                     },
                 ));
-
                 updated = true;
-                break;
+            }
+        } else {
+            // TODO: Rewrite going up from current literal pos and then start from 0 again.
+            //       (this is required for optimality)
+            //        see I. P. Gent. Optimal implementation of watched literals and more
+            //        general techniques (2013).
+            for (i, lit) in clause.literals.iter().enumerate() {
+                if (variables.is_unset(lit.variable()) || variables.satisfies(*lit))
+                    && i != other_watch.index
+                {
+                    watch.index = i;
+
+                    // We store watch updates for applying later as we are (correctly) prevented
+                    // by the borrow checker from doing it here (we are already borrowing the
+                    // current list from the vec, and there is nothing preventing us from
+                    // finding the same literal, even though we do avoid that scenario by
+                    // preprocessing). It might be possible to use split_at_mut and choose
+                    // the correct slice depending on the index, but this solution is
+                    // simpler and correctly handles duplicate literals within one clause.
+
+                    // Instead of allocating a Vec buffer for this every time, we keep one Vec
+                    // that we clear after every update and reuse it.
+                    newly_watched_clauses.push((
+                        *lit,
+                        WatchedClause {
+                            index: watched_clause.index,
+                        },
+                    ));
+
+                    updated = true;
+                    break;
+                }
             }
         }
 
