@@ -12,8 +12,8 @@ use std::mem;
 
 pub struct WatchedState<TStats: StatsStorage> {
     variables: VariableStates,
-    cnf: CNF,
     change_stack: Vec<ChangeStackItem>,
+    clauses: Vec<Clause>,
     watched_literals: WatchedLiteralMap,
     stats: TStats,
     unit_candidate_indices: Vec<usize>,
@@ -26,6 +26,28 @@ enum ChangeStackItem {
         variable: Variable,
         previous_state: VariableState,
     },
+}
+
+struct Clause {
+    literals: Vec<Literal>,
+    watched_literals: ClauseWatches,
+}
+
+impl Clause {
+    #[inline]
+    fn watched_literal1(&self) -> Literal {
+        self.literals[self.watched_literals.watch1.index]
+    }
+
+    #[inline]
+    fn watched_literal2(&self) -> Literal {
+        self.literals[self.watched_literals.watch2.index]
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.literals.len()
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -59,55 +81,34 @@ struct ClauseWatches {
 
 struct WatchedLiteralMap {
     literals: Vec<LiteralWatches>,
-    clauses: Vec<ClauseWatches>,
 }
 
 impl WatchedLiteralMap {
-    fn from_cnf(cnf: &CNF, max_variable: Variable) -> Self {
+    fn from_clauses(clauses: &[Clause], max_variable: Variable) -> Self {
         let mut literal_states = Vec::new();
         for _ in 0..((max_variable.number() + 1) * 2) {
             literal_states.push(LiteralWatches::new());
         }
 
-        let mut clause_states = Vec::new();
-
-        for (clause_i, clause) in cnf.clauses.iter().enumerate() {
-            clause_states.push(ClauseWatches {
-                watch1: ClauseWatch { index: 0 },
-                watch2: ClauseWatch { index: 1 },
-            });
-            literal_states[Self::literal_index(clause.literals[0])]
-                .clauses
-                .push(WatchedClause { index: clause_i });
-            literal_states[Self::literal_index(clause.literals[1])]
-                .clauses
-                .push(WatchedClause { index: clause_i });
+        for (clause_i, clause) in clauses.iter().enumerate() {
+            literal_states
+                [Self::literal_index(clause.literals[clause.watched_literals.watch1.index])]
+            .clauses
+            .push(WatchedClause { index: clause_i });
+            literal_states
+                [Self::literal_index(clause.literals[clause.watched_literals.watch2.index])]
+            .clauses
+            .push(WatchedClause { index: clause_i });
         }
 
         Self {
             literals: literal_states,
-            clauses: clause_states,
         }
-    }
-
-    #[inline]
-    fn literal(&self, literal: Literal) -> &LiteralWatches {
-        &self.literals[Self::literal_index(literal)]
     }
 
     #[inline]
     fn literal_mut(&mut self, literal: Literal) -> &mut LiteralWatches {
         &mut self.literals[Self::literal_index(literal)]
-    }
-
-    #[inline]
-    fn clause(&self, clause_index: usize) -> &ClauseWatches {
-        &self.clauses[clause_index]
-    }
-
-    #[inline]
-    fn clause_mut(&mut self, clause_index: usize) -> &mut ClauseWatches {
-        &mut self.clauses[clause_index]
     }
 
     #[inline]
@@ -123,15 +124,27 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
             assert!(clause.literals.len() > 1);
         }
 
+        let clauses: Vec<_> = cnf
+            .clauses
+            .into_iter()
+            .map(|x| Clause {
+                literals: x.literals,
+                watched_literals: ClauseWatches {
+                    watch1: ClauseWatch { index: 0 },
+                    watch2: ClauseWatch { index: 1 },
+                },
+            })
+            .collect();
+
         WatchedState {
             variables: VariableStates::new_unset(max_variable),
-            watched_literals: WatchedLiteralMap::from_cnf(&cnf, max_variable),
+            watched_literals: WatchedLiteralMap::from_clauses(&clauses, max_variable),
             newly_watched_clauses: Vec::new(),
-            cnf,
             change_stack: Vec::new(),
             stats: Default::default(),
             // The CNF has no unit clauses; this is verified by the assert above.
             unit_candidate_indices: Vec::new(),
+            clauses,
         }
     }
 
@@ -157,7 +170,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
     #[inline]
     fn all_clauses_satisfied(&self) -> bool {
-        for i in 0..self.cnf.clauses.len() {
+        for i in 0..self.clauses.len() {
             if !self.is_satisfied(i) {
                 return false;
             }
@@ -224,9 +237,8 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                     negated_literal,
                     &watched_clause,
                     &self.variables,
-                    &mut self.watched_literals.clauses,
                     &mut self.newly_watched_clauses,
-                    &self.cnf.clauses,
+                    &mut self.clauses,
                 );
 
                 match update_result {
@@ -291,9 +303,9 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
     fn next_unit_literal(&mut self) -> Option<Literal> {
         let clause_index = self.next_unit_clause()?;
 
-        let watch = self.watched_literals.clause(clause_index);
-        let lit1 = self.cnf.clauses[clause_index].literals[watch.watch1.index];
-        let lit2 = self.cnf.clauses[clause_index].literals[watch.watch2.index];
+        let clause = &self.clauses[clause_index];
+        let lit1 = clause.watched_literal1();
+        let lit2 = clause.watched_literal2();
         if self.variables.is_unset(lit1.variable()) {
             Some(lit1)
         } else {
@@ -315,12 +327,12 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
         literal: Literal,
         watched_clause: &WatchedClause,
         variables: &VariableStates,
-        clause_watches: &mut [ClauseWatches],
         newly_watched_clauses: &mut Vec<(Literal, WatchedClause)>,
-        cnf_clauses: &[Clause],
+        clauses: &mut [Clause],
     ) -> WatchUpdateResult {
-        let watches = &mut clause_watches[watched_clause.index];
-        let clause = &cnf_clauses[watched_clause.index];
+        let clause = &mut clauses[watched_clause.index];
+        let clause_len = clause.len();
+        let watches = &mut clause.watched_literals;
 
         let (mut watch, other_watch) = if clause.literals[watches.watch1.index] == literal {
             (&mut watches.watch1, &watches.watch2)
@@ -338,9 +350,9 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
 
         let mut updated = false;
 
-        if clause.len() == 2 {
+        if clause_len == 2 {
             // We can never move the watches for clauses with 2 literals.
-        } else if clause.len() == 3 {
+        } else if clause_len == 3 {
             debug_assert_ne!(watch.index, other_watch.index);
 
             let index = if watch.index != 0 && other_watch.index != 0 {
@@ -445,9 +457,9 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
     }
 
     fn is_unit(&self, clause_index: usize) -> bool {
-        let watch = self.watched_literals.clause(clause_index);
-        let lit1 = self.cnf.clauses[clause_index].literals[watch.watch1.index];
-        let lit2 = self.cnf.clauses[clause_index].literals[watch.watch2.index];
+        let clause = &self.clauses[clause_index];
+        let lit1 = clause.watched_literal1();
+        let lit2 = clause.watched_literal2();
 
         // Exactly one is unsatisfied (the other undecided) and neither is satisfied.
         (self.variables.unsatisfies(lit1) ^ self.variables.unsatisfies(lit2))
@@ -456,9 +468,9 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
     }
 
     fn is_satisfied(&self, clause_index: usize) -> bool {
-        let watch = self.watched_literals.clause(clause_index);
-        let lit1 = self.cnf.clauses[clause_index].literals[watch.watch1.index];
-        let lit2 = self.cnf.clauses[clause_index].literals[watch.watch2.index];
+        let clause = &self.clauses[clause_index];
+        let lit1 = clause.watched_literal1();
+        let lit2 = clause.watched_literal2();
 
         self.variables.satisfies(lit1) || self.variables.satisfies(lit2)
     }

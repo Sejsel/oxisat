@@ -150,11 +150,6 @@ impl Clause {
     }
 
     #[inline]
-    fn is_empty(&self) -> bool {
-        self.literals.is_empty()
-    }
-
-    #[inline]
     fn is_unit(&self) -> bool {
         self.len() == 1
     }
@@ -182,11 +177,6 @@ impl CNF {
     /// Returns `true` if this CNF is satisfied (i.e. contains no clauses).
     fn is_satisfied(&self) -> bool {
         self.clauses.is_empty()
-    }
-
-    /// Returns `true` if this CNF cannot be satisfied (i.e. contains an empty clause)
-    fn is_unsatisfiable(&self) -> bool {
-        self.clauses.iter().any(|clause| clause.is_empty())
     }
 
     /// Returns the maximum variable used within the CNF.
