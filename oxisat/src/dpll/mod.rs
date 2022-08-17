@@ -327,7 +327,9 @@ impl Stats {
 }
 
 impl StatsStorage for NoStats {
+    #[inline(always)]
     fn increment_decisions(&mut self) {}
+    #[inline(always)]
     fn increment_unit_propagation_steps(&mut self) {}
 }
 
