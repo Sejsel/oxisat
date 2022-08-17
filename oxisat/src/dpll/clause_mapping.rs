@@ -277,6 +277,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
 
             // All clauses that contain this literal are now satisfied.
             for &clause in self.literal_to_clause_map.clauses(new_literal) {
+                self.stats.increment_clause_state_updates();
                 self.change_stack.push(ChangeStackItem::SetClauseState {
                     clause_index: clause,
                     previous_state: self.clauses.state(clause),
@@ -287,6 +288,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
             // All clauses that contain the negated literal have
             // it removed; moving towards unsatisfiability
             for &clause in self.literal_to_clause_map.clauses(!new_literal) {
+                self.stats.increment_clause_state_updates();
                 let old_state = self.clauses.state(clause);
                 if let ClauseState::Unsatisfied { unset_size: size } = old_state {
                     // We assume the literal only occurs once in the clause.
@@ -320,6 +322,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
                     clause_index,
                     previous_state,
                 }) => {
+                    self.stats.increment_clause_state_updates();
                     self.clauses.set_state(clause_index, previous_state);
                 }
                 Some(ChangeStackItem::SetVariable {

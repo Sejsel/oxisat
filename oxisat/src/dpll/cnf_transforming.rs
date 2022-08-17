@@ -49,7 +49,7 @@ enum CNFChange {
 }
 
 impl CNFChange {
-    fn undo(self, cnf: &mut CNF) {
+    fn undo<TStats : StatsStorage>(self, cnf: &mut CNF, stats: &mut TStats) {
         match self {
             CNFChange::RemoveClause {
                 clause,
@@ -60,6 +60,8 @@ impl CNFChange {
                 // We used `swap_remove` to remove the clause, we need to invert this operation
                 // to maintain index validity within other changes.
                 cnf.clauses.swap(clause_index, len);
+
+                stats.increment_clause_state_updates();
             }
             CNFChange::RemoveLiteral {
                 literal,
@@ -89,7 +91,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
                 Some(CNFStackItem::UnitPropagation) => {
                     break;
                 }
-                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf),
+                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf, &mut self.stats),
                 Some(CNFStackItem::SetVariable {
                     variable,
                     previous_state,
@@ -158,6 +160,8 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
             let mut max_clause_i = self.cnf.clauses.len();
 
             while clause_i < max_clause_i {
+                self.stats.increment_clause_state_updates();
+
                 enum LiteralSearchResult {
                     None,
                     Found,
@@ -221,7 +225,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
     fn undo_last_set_variable(&mut self) {
         loop {
             match self.cnf_change_stack.pop() {
-                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf),
+                Some(CNFStackItem::Change(change)) => change.undo(&mut self.cnf, &mut self.stats),
                 Some(CNFStackItem::SetVariable {
                     variable,
                     previous_state,

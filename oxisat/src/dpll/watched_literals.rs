@@ -233,6 +233,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
                 [WatchedLiteralMap::literal_index(negated_literal)];
 
             for (i, &watched_clause) in literal_watches.clauses.iter().enumerate() {
+                self.stats.increment_clause_state_updates();
                 let update_result = Self::update_watches(
                     negated_literal,
                     &watched_clause,

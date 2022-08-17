@@ -94,9 +94,14 @@ fn main() -> anyhow::Result<()> {
             "Unit propagation derivations",
             &stats.unit_propagation_steps().to_string(),
         ]);
+        table.add_row(vec![
+            "Clause state updates",
+            &stats.clause_state_updates().to_string(),
+        ]);
     } else {
         table.add_row(vec!["Decisions", "not tracked"]);
         table.add_row(vec!["Unit propagation derivations", "not tracked"]);
+        table.add_row(vec!["Clause state updates", "not tracked"]);
     }
     for line in table.lines() {
         println!("c {line}");
