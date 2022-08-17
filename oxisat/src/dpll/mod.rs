@@ -342,14 +342,17 @@ impl StatsStorage for NoStats {
 }
 
 impl StatsStorage for Stats {
+    #[inline]
     fn increment_decisions(&mut self) {
         self.decisions += 1;
     }
 
+    #[inline]
     fn increment_unit_propagation_steps(&mut self) {
         self.unit_propagation_steps += 1;
     }
 
+    #[inline]
     fn increment_clause_state_updates(&mut self) {
         self.clause_state_updates += 1;
     }
