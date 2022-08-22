@@ -17,7 +17,7 @@ struct Args {
     #[clap(short, long)]
     no_stats: bool,
 
-    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllWatchedLiterals)]
+    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllDefault)]
     implementation: Implementation,
 
     #[clap(group = "input")]
@@ -26,6 +26,7 @@ struct Args {
 
 #[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
 enum Implementation {
+    DpllDefault,
     DpllCnfTransforming,
     DpllClauseMapping,
     DpllWatchedLiterals,
@@ -65,6 +66,7 @@ fn main() -> anyhow::Result<()> {
     let start_time = Instant::now();
 
     let dpll_impl = match args.implementation {
+        Implementation::DpllDefault => dpll::Implementation::Default,
         Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
         Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
         Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,

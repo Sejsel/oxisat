@@ -207,7 +207,7 @@ pub fn solve<TStatistics: StatsStorage>(
     implementation: Implementation,
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf),
+        Implementation::Default => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf),
         Implementation::CnfTransforming => {
             solve_cnf::<CnfTransformingState<TStatistics>, TStatistics>(cnf)
         }
