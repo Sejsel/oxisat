@@ -192,7 +192,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for WatchedState<TStats> {
 
     fn into_result(self) -> (Solution, TStats) {
         if self.all_clauses_satisfied() {
-            (Solution::Satisfiable(self.variables), self.stats)
+            (Solution::Satisfiable(self.variables.into()), self.stats)
         } else {
             (Solution::Unsatisfiable, self.stats)
         }

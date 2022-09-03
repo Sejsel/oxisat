@@ -6,7 +6,7 @@ use nom::Finish;
 use oxisat::cnf::CNF;
 use oxisat::dpll;
 use oxisat::dpll::{NoStats, Stats};
-use oxisat::sat::{Solution, VariableState};
+use oxisat::sat::{Solution, VariableValue};
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
@@ -120,9 +120,9 @@ fn main() -> anyhow::Result<()> {
                 .enumerate()
                 .skip(1)
                 .map(|(i, state)| match state {
-                    VariableState::True => format!("{i}"),
-                    VariableState::False => format!("-{i}"),
-                    VariableState::Unset => format!("-{i}"), // Default to false for unset vars
+                    VariableValue::True => format!("{i}"),
+                    VariableValue::False => format!("-{i}"),
+                    VariableValue::Unset => format!("-{i}"), // Default to false for unset vars
                 })
                 .collect();
             println!("v {} 0", values.join(" "));

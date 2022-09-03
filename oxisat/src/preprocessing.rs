@@ -1,5 +1,5 @@
 use crate::cnf::{Literal, Variable, VariableType, CNF};
-use crate::sat::{Solution, VariableState, VariableStates};
+use crate::sat::{Solution, VariableValue, VariableResults};
 
 pub(crate) enum PreprocessingResult {
     /// The original CNF is unsatisfiable.
@@ -7,7 +7,7 @@ pub(crate) enum PreprocessingResult {
     Preprocessed {
         original_max_variable: Variable,
         new_max_variable: Option<Variable>,
-        set_variables: Vec<(Variable, VariableState)>,
+        set_variables: Vec<(Variable, VariableValue)>,
         new_to_old_variable_indices: Vec<(usize, usize)>,
     },
 }
@@ -26,7 +26,7 @@ impl PreprocessingResult {
 
     /// Converts [`VariableStates`] from the variable space of the post-processed CNF
     /// to the original CNF.
-    pub(crate) fn reverse_map_variables(&self, states: &VariableStates) -> VariableStates {
+    pub(crate) fn reverse_map_variables(&self, states: &VariableResults) -> VariableResults {
         match self {
             PreprocessingResult::Unsatisfiable => states.clone(),
             PreprocessingResult::Preprocessed {
@@ -35,7 +35,7 @@ impl PreprocessingResult {
                 new_to_old_variable_indices,
                 ..
             } => {
-                let mut result = VariableStates::new_unset(*original_max_variable);
+                let mut result = VariableResults::new_unset(*original_max_variable);
 
                 for &(var, state) in set_variables {
                     result.set(var, state);
@@ -57,13 +57,27 @@ impl PreprocessingResult {
     }
 }
 
+impl VariableValue {
+    #[inline]
+    fn satisfies(&self, literal: Literal) -> bool {
+        let literal_state: VariableValue = literal.value().into();
+        *self == literal_state
+    }
+
+    #[inline]
+    fn unsatisfies(&self, literal: Literal) -> bool {
+        let literal_state_negated: VariableValue = (!literal.value()).into();
+        *self == literal_state_negated
+    }
+}
+
 pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> PreprocessingResult {
     debug_assert!(cnf
         .max_variable()
         .map(|x| x == max_variable)
         .unwrap_or(true));
 
-    let mut states = VariableStates::new_unset(max_variable);
+    let mut states = VariableResults::new_unset(max_variable);
 
     // Setting variables according to unit clauses. We need to repeat this as more unit clauses
     // may be created by this process.
@@ -81,7 +95,7 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
                 let literal = clause.literals[0];
                 let state = states.get(literal.variable());
 
-                let opposite_state: VariableState = (!literal.value()).into();
+                let opposite_state: VariableValue = (!literal.value()).into();
                 if state == opposite_state {
                     return PreprocessingResult::Unsatisfiable;
                 }
@@ -125,14 +139,14 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
     let set_vars: Vec<_> = states
         .iter()
         .enumerate()
-        .filter(|(_, &x)| x != VariableState::Unset)
+        .filter(|(_, &x)| x != VariableValue::Unset)
         .map(|(i, &x)| (Variable::new(i as VariableType), x))
         .collect();
 
     let unset_vars: Vec<_> = states
         .iter()
         .enumerate()
-        .filter(|(_, &x)| x == VariableState::Unset)
+        .filter(|(_, &x)| x == VariableValue::Unset)
         .collect();
 
     let var_index_pairs: Vec<_> = unset_vars
@@ -346,14 +360,14 @@ mod tests {
         let max_var = cnf.max_variable().unwrap();
         let result = preprocess_cnf(&mut cnf, max_var);
 
-        let mut potential_map = VariableStates::new_unset(Variable::new(2));
-        potential_map.set(Variable::new(1), VariableState::True);
-        potential_map.set(Variable::new(2), VariableState::True);
+        let mut potential_map = VariableResults::new_unset(Variable::new(2));
+        potential_map.set(Variable::new(1), VariableValue::True);
+        potential_map.set(Variable::new(2), VariableValue::True);
 
         let reversed_mapping = result.reverse_map_variables(&potential_map);
-        assert_eq!(reversed_mapping.get(Variable::new(1)), VariableState::True); // From post-processed
-        assert_eq!(reversed_mapping.get(Variable::new(2)), VariableState::False); // From pre-process
-        assert_eq!(reversed_mapping.get(Variable::new(3)), VariableState::True);
+        assert_eq!(reversed_mapping.get(Variable::new(1)), VariableValue::True); // From post-processed
+        assert_eq!(reversed_mapping.get(Variable::new(2)), VariableValue::False); // From pre-process
+        assert_eq!(reversed_mapping.get(Variable::new(3)), VariableValue::True);
         // From post-processed
     }
 

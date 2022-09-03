@@ -1,79 +1,50 @@
 use crate::cnf::{Literal, Variable};
 
 pub enum Solution {
-    Satisfiable(VariableStates),
+    Satisfiable(VariableResults),
     Unsatisfiable,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum VariableState {
+pub enum VariableValue {
     False = 0,
     True = 1,
     Unset,
 }
 
-impl VariableState {
-    #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        let literal_state: VariableState = literal.value().into();
-        *self == literal_state
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        let literal_state_negated: VariableState = (!literal.value()).into();
-        *self == literal_state_negated
-    }
-}
-
 #[derive(Clone)]
-pub struct VariableStates(Vec<VariableState>);
+pub struct VariableResults(Vec<VariableValue>);
 
-impl VariableStates {
-    pub fn new_unset(max_variable: Variable) -> Self {
+impl VariableResults {
+    pub(crate) fn from_vec(values: Vec<VariableValue>) -> Self {
+        Self(values)
+    }
+
+    pub(crate) fn new_unset(max_variable: Variable) -> Self {
         // We allocate one extra element to make indexing trivial.
-        VariableStates(vec![
-            VariableState::Unset;
+        VariableResults(vec![
+            VariableValue::Unset;
             (max_variable.number() + 1) as usize
         ])
     }
 
-    pub fn empty() -> Self {
-        VariableStates(Vec::new())
-    }
-
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &VariableState> {
+    pub fn iter(&self) -> impl Iterator<Item = &VariableValue> {
         self.0.iter()
     }
 
     #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).satisfies(literal)
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).unsatisfies(literal)
-    }
-
-    #[inline]
-    pub fn is_unset(&self, variable: Variable) -> bool {
-        self.get(variable) == VariableState::Unset
-    }
-
-    #[inline]
-    pub fn get(&self, variable: Variable) -> VariableState {
+    pub fn get(&self, variable: Variable) -> VariableValue {
         self.0[variable.number() as usize]
     }
 
     #[inline]
-    pub fn set(&mut self, variable: Variable, new_state: VariableState) {
+    pub(crate) fn set(&mut self, variable: Variable, new_state: VariableValue) {
         self.0[variable.number() as usize] = new_state
     }
 
     #[inline]
-    pub fn set_to_literal(&mut self, literal: Literal) {
+    pub(crate) fn set_to_literal(&mut self, literal: Literal) {
         self.set(literal.variable(), literal.value().into())
     }
 
@@ -83,13 +54,13 @@ impl VariableStates {
     }
 }
 
-impl From<bool> for VariableState {
+impl From<bool> for VariableValue {
     #[inline]
     fn from(value: bool) -> Self {
         if value {
-            VariableState::True
+            VariableValue::True
         } else {
-            VariableState::False
+            VariableValue::False
         }
     }
 }
