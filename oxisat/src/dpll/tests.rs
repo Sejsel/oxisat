@@ -2,6 +2,7 @@ use super::*;
 
 #[generic_tests::define]
 mod dpll {
+    use super::stats::NoStats;
     use super::*;
     use crate::dimacs;
 

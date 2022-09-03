@@ -5,7 +5,7 @@ use comfy_table::Table;
 use nom::Finish;
 use oxisat::cnf::CNF;
 use oxisat::dpll;
-use oxisat::dpll::{NoStats, Stats};
+use oxisat::dpll::stats::{NoStats, Stats};
 use oxisat::sat::{Solution, VariableValue};
 use std::env;
 use std::fs::File;

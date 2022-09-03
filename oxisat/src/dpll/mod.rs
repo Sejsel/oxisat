@@ -1,5 +1,7 @@
 mod clause_mapping;
 mod cnf_transforming;
+mod state;
+pub mod stats;
 mod watched_literals;
 
 #[cfg(test)]
@@ -8,104 +10,25 @@ mod tests;
 use crate::cnf::{Clause, Literal, Variable, VariableType, CNF};
 use crate::dpll::clause_mapping::ClauseMappingState;
 use crate::dpll::cnf_transforming::CnfTransformingState;
+use crate::dpll::state::{VariableState, VariableStates};
+use crate::dpll::stats::StatsStorage;
 use crate::dpll::watched_literals::WatchedState;
 use crate::preprocessing;
 use crate::preprocessing::PreprocessingResult;
 use crate::sat::{Solution, VariableResults, VariableValue};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum VariableState {
-    False = 0,
-    True = 1,
-    Unset,
-}
-
-impl VariableState {
-    #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        let literal_state: VariableState = literal.value().into();
-        *self == literal_state
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        let literal_state_negated: VariableState = (!literal.value()).into();
-        *self == literal_state_negated
-    }
-}
-
-#[derive(Clone)]
-struct VariableStates(Vec<VariableState>);
-
-impl VariableStates {
-    pub fn new_unset(max_variable: Variable) -> Self {
-        // We allocate one extra element to make indexing trivial.
-        VariableStates(vec![
-            VariableState::Unset;
-            (max_variable.number() + 1) as usize
-        ])
-    }
-
-    pub fn empty() -> Self {
-        VariableStates(Vec::new())
-    }
-
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &VariableState> {
-        self.0.iter()
-    }
-
-    #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).satisfies(literal)
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).unsatisfies(literal)
-    }
-
-    #[inline]
-    pub fn is_unset(&self, variable: Variable) -> bool {
-        self.get(variable) == VariableState::Unset
-    }
-
-    #[inline]
-    pub fn get(&self, variable: Variable) -> VariableState {
-        self.0[variable.number() as usize]
-    }
-
-    #[inline]
-    pub fn set(&mut self, variable: Variable, new_state: VariableState) {
-        self.0[variable.number() as usize] = new_state
-    }
-}
-
-impl From<bool> for VariableState {
-    #[inline]
-    fn from(value: bool) -> Self {
-        if value {
-            VariableState::True
-        } else {
-            VariableState::False
-        }
-    }
-}
-
-impl From<VariableStates> for VariableResults {
-    fn from(states: VariableStates) -> Self {
-        VariableResults::from_vec(states.iter().map(|&x| x.into()).collect())
-    }
-}
-
-impl From<VariableState> for VariableValue {
-    fn from(state: VariableState) -> Self {
-        match state {
-            VariableState::False => VariableValue::False,
-            VariableState::True => VariableValue::True,
-            VariableState::Unset => VariableValue::Unset
-        }
-    }
+trait DpllState<TStats: StatsStorage> {
+    fn new(cnf: CNF, max_variable: Variable) -> Self;
+    fn start_unit_propagation(&mut self);
+    fn undo_last_unit_propagation(&mut self);
+    fn all_clauses_satisfied(&self) -> bool;
+    fn next_unset_variable(&self) -> Option<Variable>;
+    fn into_result(self) -> (Solution, TStats);
+    fn stats(&mut self) -> &mut TStats;
+    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome;
+    fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome;
+    fn undo_last_set_variable(&mut self);
+    fn next_unit_literal(&mut self) -> Option<Literal>;
 }
 
 pub enum Implementation {
@@ -129,76 +52,6 @@ pub fn solve<TStatistics: StatsStorage>(
         }
         Implementation::WatchedLiterals => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf),
     }
-}
-
-pub trait StatsStorage: Default {
-    fn increment_decisions(&mut self);
-    fn increment_unit_propagation_steps(&mut self);
-    fn increment_clause_state_updates(&mut self);
-}
-
-#[derive(Default)]
-pub struct NoStats;
-
-#[derive(Default)]
-pub struct Stats {
-    decisions: u64,
-    unit_propagation_steps: u64,
-    clause_state_updates: u64,
-}
-
-impl Stats {
-    pub fn decisions(&self) -> u64 {
-        self.decisions
-    }
-
-    pub fn unit_propagation_steps(&self) -> u64 {
-        self.unit_propagation_steps
-    }
-
-    pub fn clause_state_updates(&self) -> u64 {
-        self.clause_state_updates
-    }
-}
-
-impl StatsStorage for NoStats {
-    #[inline(always)]
-    fn increment_decisions(&mut self) {}
-    #[inline(always)]
-    fn increment_unit_propagation_steps(&mut self) {}
-    #[inline(always)]
-    fn increment_clause_state_updates(&mut self) {}
-}
-
-impl StatsStorage for Stats {
-    #[inline]
-    fn increment_decisions(&mut self) {
-        self.decisions += 1;
-    }
-
-    #[inline]
-    fn increment_unit_propagation_steps(&mut self) {
-        self.unit_propagation_steps += 1;
-    }
-
-    #[inline]
-    fn increment_clause_state_updates(&mut self) {
-        self.clause_state_updates += 1;
-    }
-}
-
-trait DpllState<TStats: StatsStorage> {
-    fn new(cnf: CNF, max_variable: Variable) -> Self;
-    fn start_unit_propagation(&mut self);
-    fn undo_last_unit_propagation(&mut self);
-    fn all_clauses_satisfied(&self) -> bool;
-    fn next_unset_variable(&self) -> Option<Variable>;
-    fn into_result(self) -> (Solution, TStats);
-    fn stats(&mut self) -> &mut TStats;
-    fn set_variable_to_literal(&mut self, literal: Literal) -> SetVariableOutcome;
-    fn set_variable(&mut self, variable: Variable, state: VariableState) -> SetVariableOutcome;
-    fn undo_last_set_variable(&mut self);
-    fn next_unit_literal(&mut self) -> Option<Literal>;
 }
 
 #[must_use]
