@@ -3,6 +3,7 @@ use super::*;
 #[generic_tests::define]
 mod dpll {
     use super::*;
+    use crate::dimacs;
 
     #[instantiate_tests(<ClauseMappingState<NoStats>>)]
     mod clause_mapping {}
@@ -62,7 +63,7 @@ mod dpll {
         match solution {
             Solution::Satisfiable(solution) => {
                 // One extra for the unused 0 variable.
-                assert_eq!(solution.0.len(), 4);
+                assert_eq!(solution.len(), 4);
             }
             Solution::Unsatisfiable => {}
         }

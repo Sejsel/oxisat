@@ -1,4 +1,5 @@
-use super::*;
+use crate::cnf::{Literal, Variable, VariableType, CNF};
+use crate::sat::{Solution, VariableState, VariableStates};
 
 pub(crate) enum PreprocessingResult {
     /// The original CNF is unsatisfiable.
@@ -239,6 +240,7 @@ fn remove_duplicate_literals(cnf: &mut CNF, max_variable: Variable) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cnf::Clause;
 
     #[test]
     fn preprocess_removes_unit_chain() {
@@ -351,7 +353,8 @@ mod tests {
         let reversed_mapping = result.reverse_map_variables(&potential_map);
         assert_eq!(reversed_mapping.get(Variable::new(1)), VariableState::True); // From post-processed
         assert_eq!(reversed_mapping.get(Variable::new(2)), VariableState::False); // From pre-process
-        assert_eq!(reversed_mapping.get(Variable::new(3)), VariableState::True); // From post-processed
+        assert_eq!(reversed_mapping.get(Variable::new(3)), VariableState::True);
+        // From post-processed
     }
 
     #[test]

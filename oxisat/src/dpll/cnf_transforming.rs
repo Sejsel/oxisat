@@ -49,7 +49,7 @@ enum CNFChange {
 }
 
 impl CNFChange {
-    fn undo<TStats : StatsStorage>(self, cnf: &mut CNF, stats: &mut TStats) {
+    fn undo<TStats: StatsStorage>(self, cnf: &mut CNF, stats: &mut TStats) {
         match self {
             CNFChange::RemoveClause {
                 clause,
@@ -243,7 +243,7 @@ impl<TStats: StatsStorage> DpllState<TStats> for CnfTransformingState<TStats> {
 
     fn next_unit_literal(&mut self) -> Option<Literal> {
         self.cnf
-            .clauses
+            .clauses()
             .iter()
             .find(|clause| clause.is_unit())
             .map(|clause| clause.literals[0])

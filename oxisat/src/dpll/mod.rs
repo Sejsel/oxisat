@@ -1,199 +1,17 @@
 mod clause_mapping;
 mod cnf_transforming;
-mod preprocessing;
 mod watched_literals;
 
 #[cfg(test)]
 mod tests;
 
-use crate::dimacs;
-use crate::dimacs::Dimacs;
+use crate::cnf::{Clause, Literal, Variable, VariableType, CNF};
 use crate::dpll::clause_mapping::ClauseMappingState;
 use crate::dpll::cnf_transforming::CnfTransformingState;
 use crate::dpll::watched_literals::WatchedState;
-use crate::dpll::preprocessing::PreprocessingResult;
-
-/// The underlying type that is used to handle variables.
-/// This is a signed integer type.
-type VariableType = i32;
-
-pub const MAX_VARIABLE_COUNT: usize = (VariableType::MAX - 1) as usize;
-
-/// Represents a boolean variable without a value.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Variable(VariableType);
-
-/// Represents a literal, i.e. a variable with a set value (true or false).
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct Literal(VariableType);
-
-/// Represents a CNF clause (a disjunction of literals).
-#[derive(Clone, Debug)]
-pub struct Clause {
-    literals: Vec<Literal>,
-}
-
-/// Represents a formula in a Conjunctive normal form (a conjunction of disjunction clauses).
-#[derive(Clone, Debug)]
-pub struct CNF {
-    clauses: Vec<Clause>,
-}
-
-impl From<Dimacs> for CNF {
-    fn from(dimacs: Dimacs) -> Self {
-        let mut cnf = CNF::new();
-
-        for dimacs_clause in dimacs.clauses() {
-            let mut clause = Clause::new();
-
-            for literal in dimacs_clause.literals() {
-                clause.add_literal(match literal {
-                    dimacs::Literal::Positive(variable) => Literal::new(
-                        Variable((*variable).try_into().expect(
-                            "Variable index does not fit into the range of the underlying type",
-                        )),
-                        true,
-                    ),
-                    dimacs::Literal::Negative(variable) => Literal::new(
-                        Variable((*variable).try_into().expect(
-                            "Variable index does not fit into the range of the underlying type",
-                        )),
-                        false,
-                    ),
-                });
-            }
-
-            cnf.add_clause(clause);
-        }
-
-        cnf
-    }
-}
-
-impl Variable {
-    /// Creates a new variable with a given **positive** number.
-    ///
-    /// # Panics
-    /// Panics if `number <= 0` with a debug assert.
-    /// The value is not checked when debug asserts are disabled.
-    pub fn new(number: VariableType) -> Self {
-        // For performance reasons, we only check this in debug mode.
-        debug_assert!(number > 0);
-        Variable(number)
-    }
-
-    #[inline]
-    pub fn number(&self) -> VariableType {
-        self.0
-    }
-}
-
-impl Literal {
-    /// Creates a new literal for a variable with a set value.
-    pub fn new(variable: Variable, is_true: bool) -> Self {
-        if is_true {
-            Literal(variable.0)
-        } else {
-            Literal(-variable.0)
-        }
-    }
-
-    /// Returns `true` if the literal is true.
-    #[inline]
-    fn value(self) -> bool {
-        self.0 > 0
-    }
-
-    /// Returns the variable of the literal.
-    #[inline]
-    fn variable(self) -> Variable {
-        if self.0 > 0 {
-            Variable(self.0)
-        } else {
-            Variable(-self.0)
-        }
-    }
-
-    #[inline]
-    fn negated(self) -> Literal {
-        Literal(-self.0)
-    }
-}
-
-impl std::ops::Not for Literal {
-    type Output = Literal;
-
-    #[inline]
-    fn not(self) -> Self::Output {
-        self.negated()
-    }
-}
-
-impl Clause {
-    /// Creates a new empty clause.
-    pub fn new() -> Self {
-        Self {
-            literals: Vec::new(),
-        }
-    }
-
-    /// Adds a literal to the clause.
-    pub fn add_literal(&mut self, literal: Literal) {
-        self.literals.push(literal)
-    }
-
-    /// Adds a literal to the clause.
-    pub fn add_variable(&mut self, variable: Variable, value: bool) {
-        self.literals.push(Literal::new(variable, value))
-    }
-
-    #[inline]
-    fn is_unit(&self) -> bool {
-        self.len() == 1
-    }
-
-    #[inline]
-    fn len(&self) -> usize {
-        self.literals.len()
-    }
-}
-
-impl CNF {
-    /// Creates a new CNF with zero clauses.
-    /// An empty CNF is considered to be satisfied.
-    pub fn new() -> Self {
-        CNF {
-            clauses: Vec::new(),
-        }
-    }
-
-    /// Adds a clause to the CNF.
-    pub fn add_clause(&mut self, clause: Clause) {
-        self.clauses.push(clause)
-    }
-
-    /// Returns `true` if this CNF is satisfied (i.e. contains no clauses).
-    fn is_satisfied(&self) -> bool {
-        self.clauses.is_empty()
-    }
-
-    /// Returns the maximum variable used within the CNF.
-    ///
-    /// Runs in O(literals) time.
-    fn max_variable(&self) -> Option<Variable> {
-        self.clauses
-            .iter()
-            .flat_map(|x| x.literals.iter().map(|x| x.variable()))
-            .max()
-    }
-}
-
-pub enum Solution {
-    Satisfiable(VariableStates),
-    Unsatisfiable,
-}
+use crate::preprocessing;
+use crate::preprocessing::PreprocessingResult;
+use crate::sat::{Solution, VariableState, VariableStates};
 
 pub enum Implementation {
     Default,
@@ -214,91 +32,7 @@ pub fn solve<TStatistics: StatsStorage>(
         Implementation::ClauseMapping => {
             solve_cnf::<ClauseMappingState<TStatistics>, TStatistics>(cnf)
         }
-        Implementation::WatchedLiterals => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf)
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum VariableState {
-    False = 0,
-    True = 1,
-    Unset,
-}
-
-impl VariableState {
-    #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        let literal_state: VariableState = literal.value().into();
-        *self == literal_state
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        let literal_state_negated: VariableState = (!literal.value()).into();
-        *self == literal_state_negated
-    }
-}
-
-#[derive(Clone)]
-pub struct VariableStates(Vec<VariableState>);
-
-impl VariableStates {
-    fn new_unset(max_variable: Variable) -> Self {
-        // We allocate one extra element to make indexing trivial.
-        VariableStates(vec![
-            VariableState::Unset;
-            (max_variable.number() + 1) as usize
-        ])
-    }
-
-    fn empty() -> Self {
-        VariableStates(Vec::new())
-    }
-
-    #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &VariableState> {
-        self.0.iter()
-    }
-
-    #[inline]
-    pub fn satisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).satisfies(literal)
-    }
-
-    #[inline]
-    pub fn unsatisfies(&self, literal: Literal) -> bool {
-        self.get(literal.variable()).unsatisfies(literal)
-    }
-
-    #[inline]
-    pub fn is_unset(&self, variable: Variable) -> bool {
-        self.get(variable) == VariableState::Unset
-    }
-
-    #[inline]
-    pub fn get(&self, variable: Variable) -> VariableState {
-        self.0[variable.number() as usize]
-    }
-
-    #[inline]
-    fn set(&mut self, variable: Variable, new_state: VariableState) {
-        self.0[variable.number() as usize] = new_state
-    }
-
-    #[inline]
-    fn set_to_literal(&mut self, literal: Literal) {
-        self.set(literal.variable(), literal.value().into())
-    }
-}
-
-impl From<bool> for VariableState {
-    #[inline]
-    fn from(value: bool) -> Self {
-        if value {
-            VariableState::True
-        } else {
-            VariableState::False
-        }
+        Implementation::WatchedLiterals => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf),
     }
 }
 
@@ -387,7 +121,7 @@ enum SetVariableOutcome {
 }
 
 fn solve_cnf_without_variables<TStats: StatsStorage>(cnf: &CNF) -> (Solution, TStats) {
-    if cnf.clauses.is_empty() {
+    if cnf.clauses().is_empty() {
         // CNF with no variables
         (
             Solution::Satisfiable(VariableStates::empty()),

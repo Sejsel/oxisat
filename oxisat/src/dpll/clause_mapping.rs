@@ -56,8 +56,8 @@ impl LiteralToClauseMap {
     fn from_cnf(cnf: &CNF, max_variable: Variable) -> Self {
         let mut map = Self::new(max_variable);
 
-        for (i, clause) in cnf.clauses.iter().enumerate() {
-            for &literal in &clause.literals {
+        for (i, clause) in cnf.clauses().iter().enumerate() {
+            for &literal in clause.literals() {
                 map.add_clause(literal, i)
             }
         }
@@ -112,7 +112,7 @@ struct ClauseStates {
 impl ClauseStates {
     fn from_cnf(cnf: &CNF) -> Self {
         let unit_clause_indices = cnf
-            .clauses
+            .clauses()
             .iter()
             .enumerate()
             .filter(|(_, x)| x.is_unit())
@@ -120,11 +120,11 @@ impl ClauseStates {
 
         let mut states = ClauseStates {
             states_by_index: Vec::new(),
-            unsatisfied: cnf.clauses.len(),
+            unsatisfied: cnf.clauses().len(),
             unit_candidate_indices: unit_clause_indices.collect(),
         };
 
-        for clause in &cnf.clauses {
+        for clause in cnf.clauses() {
             states.states_by_index.push(ClauseState::Unsatisfied {
                 unset_size: clause.len(),
             });
@@ -344,8 +344,8 @@ impl<TStats: StatsStorage> DpllState<TStats> for ClauseMappingState<TStats> {
     fn next_unit_literal(&mut self) -> Option<Literal> {
         let unit_index = self.clauses.get_unit_clause_index();
         unit_index.and_then(|index| {
-            self.cnf.clauses[index]
-                .literals
+            self.cnf.clauses()[index]
+                .literals()
                 .iter()
                 .find(|lit| self.variables.is_unset(lit.variable()))
                 .cloned()
