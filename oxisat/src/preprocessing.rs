@@ -98,8 +98,8 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
                 let literal = clause.literals[0];
                 let state = states.get(literal.variable());
 
-                let opposite_state: VariableValue = (!literal.value()).into();
-                if state == opposite_state {
+                let opposite_state_of_literal: VariableValue = (!literal.value()).into();
+                if state == opposite_state_of_literal {
                     return PreprocessingResult::Unsatisfiable;
                 }
 
@@ -123,6 +123,9 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
 
             if clause.len() != len_before {
                 any_changed = true;
+            }
+            if clause.len() == 0 {
+                return PreprocessingResult::Unsatisfiable;
             }
         }
 
@@ -451,5 +454,27 @@ mod tests {
         let max_var = cnf.max_variable().unwrap();
         preprocess_cnf(&mut cnf, max_var);
         assert_eq!(cnf.clauses.len(), 0);
+    }
+
+    #[test]
+    fn emptied_clause_removed() {
+        let mut cnf = CNF::new();
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(3), true);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(3), false);
+        cnf.add_clause(clause);
+
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        let max_var = cnf.max_variable().unwrap();
+        let result = preprocess_cnf(&mut cnf, max_var);
+        assert!(matches!(result, PreprocessingResult::Unsatisfiable));
     }
 }
