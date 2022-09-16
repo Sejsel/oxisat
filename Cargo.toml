@@ -3,4 +3,5 @@
 members = [
     "oxisat",
     "oxisat-cli",
+    "oxisat-fuzz",
 ]

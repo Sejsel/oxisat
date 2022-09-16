@@ -79,6 +79,9 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
 
     let mut states = VariableResults::new_unset(max_variable);
 
+    // Remove duplicate literals in clauses
+    remove_duplicate_literals(cnf, max_variable);
+
     // Setting variables according to unit clauses. We need to repeat this as more unit clauses
     // may be created by this process.
     //
@@ -176,11 +179,6 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
     } else {
         Some(Variable::new((unset_vars.len() - 1) as VariableType))
     };
-
-    // Remove duplicate literals in clauses
-    if let Some(new_max_variable) = new_max_variable {
-        remove_duplicate_literals(cnf, new_max_variable)
-    }
 
     PreprocessingResult::Preprocessed {
         new_to_old_variable_indices: var_index_pairs,
@@ -407,5 +405,51 @@ mod tests {
         preprocess_cnf(&mut cnf, max_var);
         assert_eq!(cnf.clauses.len(), 1);
         assert_eq!(cnf.clauses[0].len(), 2);
+    }
+
+    #[test]
+    fn duplicated_unit_removed() {
+        let mut cnf = CNF::new();
+
+        // Deduplicate and after that becomes unit
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(2), false);
+        cnf.add_clause(clause);
+
+        let max_var = cnf.max_variable().unwrap();
+        preprocess_cnf(&mut cnf, max_var);
+        assert_eq!(cnf.clauses.len(), 0);
+    }
+
+    #[test]
+    fn combined() {
+        let mut cnf = CNF::new();
+
+        // Deduplicate and after that becomes unit
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(2), false);
+        cnf.add_clause(clause);
+
+        // Always true (2 or not 2):
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(2), false);
+        clause.add_variable(Variable::new(2), true);
+        cnf.add_clause(clause);
+
+        // Duplicated and always true
+        let mut clause = Clause::new();
+        clause.add_variable(Variable::new(1), false);
+        clause.add_variable(Variable::new(1), true);
+        clause.add_variable(Variable::new(1), true);
+        cnf.add_clause(clause);
+
+        let max_var = cnf.max_variable().unwrap();
+        preprocess_cnf(&mut cnf, max_var);
+        assert_eq!(cnf.clauses.len(), 0);
     }
 }
