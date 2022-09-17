@@ -4,7 +4,7 @@ use colored::Colorize;
 use comfy_table::Table;
 use nom::Finish;
 use oxisat::cnf::CNF;
-use oxisat::dpll;
+use oxisat::{cdcl, dpll};
 use oxisat::dpll::stats::{NoStats, Stats};
 use oxisat::sat::{Solution, VariableValue};
 use std::env;
@@ -32,6 +32,7 @@ enum Implementation {
     DpllCnfTransforming,
     DpllClauseMapping,
     DpllWatchedLiterals,
+    Cdcl,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -67,50 +68,97 @@ fn main() -> anyhow::Result<()> {
 
     let start_time = Instant::now();
 
-    let dpll_impl = match args.implementation {
-        Implementation::DpllDefault => dpll::Implementation::Default,
-        Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
-        Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
-        Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,
+    let solution = match args.implementation {
+        Implementation::Cdcl => {
+            let (solution, stats) = if !args.no_stats {
+                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl::Implementation::Default);
+                (solution, Some(stats))
+            } else {
+                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl::Implementation::Default);
+                (solution, None)
+            };
+
+            let elapsed_time = start_time.elapsed();
+            println!("c");
+            let mut table = Table::new();
+            table.load_preset(comfy_table::presets::NOTHING);
+            table.add_row(vec![
+                "Time spent",
+                &format!("{:.7}s", elapsed_time.as_secs_f64()),
+            ]);
+
+            if let Some(stats) = stats {
+                table.add_row(vec!["Decisions", &stats.decisions().to_string()]);
+                table.add_row(vec![
+                    "Unit propagation derivations",
+                    &stats.unit_propagation_steps().to_string(),
+                ]);
+                table.add_row(vec![
+                    "Clause state updates",
+                    &stats.clause_state_updates().to_string(),
+                ]);
+            } else {
+                table.add_row(vec!["Decisions", "not tracked"]);
+                table.add_row(vec!["Unit propagation derivations", "not tracked"]);
+                table.add_row(vec!["Clause state updates", "not tracked"]);
+            }
+            for line in table.lines() {
+                println!("c {line}");
+            }
+            println!("c");
+
+            solution
+        }
+        _ => {
+            let dpll_impl = match args.implementation {
+                Implementation::DpllDefault => dpll::Implementation::Default,
+                Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
+                Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
+                Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,
+                Implementation::Cdcl => unreachable!(),
+            };
+
+            let (solution, stats) = if !args.no_stats {
+                let (solution, stats) = dpll::solve::<Stats>(&cnf, dpll_impl);
+                (solution, Some(stats))
+            } else {
+                let (solution, _) = dpll::solve::<NoStats>(&cnf, dpll_impl);
+                (solution, None)
+            };
+
+
+            let elapsed_time = start_time.elapsed();
+            println!("c");
+            let mut table = Table::new();
+            table.load_preset(comfy_table::presets::NOTHING);
+            table.add_row(vec![
+                "Time spent",
+                &format!("{:.7}s", elapsed_time.as_secs_f64()),
+            ]);
+
+            if let Some(stats) = stats {
+                table.add_row(vec!["Decisions", &stats.decisions().to_string()]);
+                table.add_row(vec![
+                    "Unit propagation derivations",
+                    &stats.unit_propagation_steps().to_string(),
+                ]);
+                table.add_row(vec![
+                    "Clause state updates",
+                    &stats.clause_state_updates().to_string(),
+                ]);
+            } else {
+                table.add_row(vec!["Decisions", "not tracked"]);
+                table.add_row(vec!["Unit propagation derivations", "not tracked"]);
+                table.add_row(vec!["Clause state updates", "not tracked"]);
+            }
+            for line in table.lines() {
+                println!("c {line}");
+            }
+            println!("c");
+
+            solution
+        }
     };
-
-    let (solution, stats) = if !args.no_stats {
-        let (solution, stats) = dpll::solve::<Stats>(&cnf, dpll_impl);
-        (solution, Some(stats))
-    } else {
-        let (solution, _) = dpll::solve::<NoStats>(&cnf, dpll_impl);
-        (solution, None)
-    };
-
-    let elapsed_time = start_time.elapsed();
-
-    println!("c");
-    let mut table = Table::new();
-    table.load_preset(comfy_table::presets::NOTHING);
-    table.add_row(vec![
-        "Time spent",
-        &format!("{:.7}s", elapsed_time.as_secs_f64()),
-    ]);
-
-    if let Some(stats) = stats {
-        table.add_row(vec!["Decisions", &stats.decisions().to_string()]);
-        table.add_row(vec![
-            "Unit propagation derivations",
-            &stats.unit_propagation_steps().to_string(),
-        ]);
-        table.add_row(vec![
-            "Clause state updates",
-            &stats.clause_state_updates().to_string(),
-        ]);
-    } else {
-        table.add_row(vec!["Decisions", "not tracked"]);
-        table.add_row(vec!["Unit propagation derivations", "not tracked"]);
-        table.add_row(vec!["Clause state updates", "not tracked"]);
-    }
-    for line in table.lines() {
-        println!("c {line}");
-    }
-    println!("c");
 
     match solution {
         Solution::Satisfiable(variables) => {
