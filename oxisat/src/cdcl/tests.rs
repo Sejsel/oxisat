@@ -7,7 +7,7 @@ mod cdcl {
     use crate::cnf::Clause;
     use crate::dimacs;
 
-    #[instantiate_tests(<WatchedState<NoStats>>)]
+    #[instantiate_tests(<State<NoStats>>)]
     mod watched_literals {}
 
     #[test]

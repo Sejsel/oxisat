@@ -1,6 +1,6 @@
 mod state;
 pub mod stats;
-mod watched_literals;
+mod implementation;
 
 #[cfg(test)]
 mod tests;
@@ -12,7 +12,7 @@ use crate::preprocessing::PreprocessingResult;
 use crate::sat::{Solution, VariableResults, VariableValue};
 use state::{VariableState, VariableStates};
 use stats::StatsStorage;
-use watched_literals::WatchedState;
+use implementation::State;
 
 use static_assertions::const_assert;
 
@@ -53,8 +53,8 @@ pub fn solve<TStatistics: StatsStorage>(
     implementation: Implementation,
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf),
-        Implementation::WatchedLiterals => solve_cnf::<WatchedState<TStatistics>, TStatistics>(cnf),
+        Implementation::Default => solve_cnf::<State<TStatistics>, TStatistics>(cnf),
+        Implementation::WatchedLiterals => solve_cnf::<State<TStatistics>, TStatistics>(cnf),
     }
 }
 

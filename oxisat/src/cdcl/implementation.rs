@@ -2,7 +2,7 @@ use super::*;
 use itertools::Itertools;
 use std::mem;
 
-pub struct WatchedState<TStats: StatsStorage> {
+pub(crate) struct State<TStats: StatsStorage> {
     decision_level: DecisionLevel,
     variables: VariableStates,
     variable_stack: Vec<SetUnsetVariable>,
@@ -121,7 +121,7 @@ impl WatchedLiteralMap {
     }
 }
 
-impl<TStats: StatsStorage> CdclState<TStats> for WatchedState<TStats> {
+impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
     fn new(cnf: CNF, max_variable: Variable) -> Self {
         for clause in cnf.clauses.iter() {
             assert!(clause.literals.len() > 1);
@@ -139,7 +139,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for WatchedState<TStats> {
             })
             .collect();
 
-        WatchedState {
+        State {
             decision_level: 0,
             variables: VariableStates::new_unset(max_variable),
             watched_literals: WatchedLiteralMap::from_clauses(&clauses, max_variable),
@@ -426,7 +426,7 @@ enum WatchUpdateResult {
     Unsatisfiable,
 }
 
-impl<TStats: StatsStorage> WatchedState<TStats> {
+impl<TStats: StatsStorage> State<TStats> {
     fn update_watches(
         literal: Literal,
         watched_clause: &WatchedClause,
@@ -534,7 +534,7 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
     }
 }
 
-impl<TStats: StatsStorage> WatchedState<TStats> {
+impl<TStats: StatsStorage> State<TStats> {
     fn set_variable_update_watches(&mut self, negated_literal: Literal) -> SetVariableOutcome {
         // Unfortunately, we cannot use helper methods here as the borrow checker wouldn't
         // understand that we are borrowing separate parts (literals/clauses) of the struct.
