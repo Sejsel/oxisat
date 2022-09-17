@@ -8,7 +8,7 @@ pub struct WatchedState<TStats: StatsStorage> {
     variable_stack: Vec<SetUnsetVariable>,
     clauses: Vec<Clause>,
     watched_literals: WatchedLiteralMap,
-    //unit_candidate_indices: Vec<usize>,
+    unit_candidate_indices: Vec<usize>,
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
     #[allow(unused)]
     original_clause_count: usize,
@@ -147,7 +147,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for WatchedState<TStats> {
             variable_stack: Vec::new(),
             stats: Default::default(),
             // The CNF has no unit clauses; this is verified by the assert above.
-            //unit_candidate_indices: Vec::new(),
+            unit_candidate_indices: Vec::new(),
             original_clause_count: clauses.len(),
             clauses,
         }
@@ -394,7 +394,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for WatchedState<TStats> {
         let clause_i = self.clauses.len();
         self.watched_literals.add_clause(&clause, clause_i);
         self.clauses.push(clause);
-        //self.unit_candidate_indices.push(clause_i);
+        self.unit_candidate_indices.push(clause_i);
     }
 
     fn add_learned_lit(&mut self, literal: Literal) {
@@ -558,7 +558,7 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
                 WatchUpdateResult::Changed => {}
                 WatchUpdateResult::NewUnit => {
                     literal_watches.clauses_new.push(watched_clause);
-                    //self.unit_candidate_indices.push(watched_clause.index);
+                    self.unit_candidate_indices.push(watched_clause.index);
                 }
                 WatchUpdateResult::Unsatisfiable => {
                     literal_watches.clauses_new.push(watched_clause);
@@ -601,14 +601,6 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
     }
 
     fn next_unit_clause(&mut self) -> Option<usize> {
-        // TODO: optimize
-        for i in 0..self.clauses.len() {
-            if self.is_unit(i) {
-                return Some(i);
-            }
-        }
-        None
-        /*
         // Unit clause candidates may also contain clauses that are not unit anymore.
         // We remove all the clauses from the end that are not unit anymore.
         while let Some(index) = self.unit_candidate_indices.last() {
@@ -623,7 +615,6 @@ impl<TStats: StatsStorage> WatchedState<TStats> {
         // clauses being included in `unit_candidate_indices` and it may stay unit after this
         // function is called.
         self.unit_candidate_indices.last().copied()
-         */
     }
 
     fn is_unit(&self, clause_index: usize) -> bool {
