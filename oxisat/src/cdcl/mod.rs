@@ -154,11 +154,18 @@ fn cdcl<TState: CdclState<TStatistics>, TStatistics: StatsStorage>(
             state.backtrack(conflict_result.backtrack_level);
 
             match conflict_result.outcome {
-                ConflictOutcome::NewClause(lits) => state.add_learned_clause(lits),
-                ConflictOutcome::ForcedVariableValue(lit) => state.add_learned_lit(lit),
+                ConflictOutcome::NewClause(lits) => {
+                    state.stats().increment_learned_clauses();
+                    state.add_learned_clause(lits)
+                },
+                ConflictOutcome::ForcedVariableValue(lit) => {
+                    state.stats().increment_learned_literals();
+                    state.add_learned_lit(lit)
+                },
             }
 
             if state.should_restart() {
+                state.stats().increment_restarts();
                 state.backtrack(0);
             }
         }

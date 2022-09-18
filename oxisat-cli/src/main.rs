@@ -97,10 +97,25 @@ fn main() -> anyhow::Result<()> {
                     "Clause state updates",
                     &stats.clause_state_updates().to_string(),
                 ]);
+                table.add_row(vec![
+                    "Learned clauses",
+                    &stats.learned_clauses().to_string(),
+                ]);
+                table.add_row(vec![
+                    "Learned literals",
+                    &stats.learned_literals().to_string(),
+                ]);
+                table.add_row(vec![
+                    "Restarts",
+                    &stats.restarts().to_string(),
+                ]);
             } else {
                 table.add_row(vec!["Decisions", "not tracked"]);
                 table.add_row(vec!["Unit propagation derivations", "not tracked"]);
                 table.add_row(vec!["Clause state updates", "not tracked"]);
+                table.add_row(vec!["Learned clauses", "not tracked"]);
+                table.add_row(vec!["Learned literals", "not tracked"]);
+                table.add_row(vec!["Restarts", "not tracked"]);
             }
             for line in table.lines() {
                 println!("c {line}");
