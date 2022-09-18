@@ -12,7 +12,61 @@ pub(crate) struct State<TStats: StatsStorage> {
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
     #[allow(unused)]
     original_clause_count: usize,
+    restart_generator: RestartGenerator,
     stats: TStats,
+}
+
+struct RestartGenerator {
+    seq: LubySequence,
+    non_resets_since: u64,
+}
+
+impl RestartGenerator {
+    fn new() -> Self {
+        Self {
+            seq: LubySequence::new(),
+            non_resets_since: 0,
+        }
+    }
+
+    fn should_restart(&mut self) -> bool {
+        self.non_resets_since += 1;
+        if self.non_resets_since >= self.seq.current() {
+            self.non_resets_since = 0;
+            self.seq.next();
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Luby Sequence generator, see OEIS A182105
+struct LubySequence {
+    u: i64,
+    v: i64,
+}
+
+impl LubySequence {
+    fn new() -> Self {
+        Self { u: 1, v: 1 }
+    }
+
+    fn current(&self) -> u64 {
+        self.v as u64
+    }
+
+    fn next(&mut self) -> u64 {
+        // Construction by Knuth
+        if (self.u & -self.u) == self.v {
+            self.u += 1;
+            self.v = 1;
+        } else {
+            self.v *= 2;
+        }
+
+        self.v as u64
+    }
 }
 
 struct SetUnsetVariable {
@@ -149,6 +203,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
             // The CNF has no unit clauses; this is verified by the assert above.
             unit_candidate_indices: Vec::new(),
             original_clause_count: clauses.len(),
+            restart_generator: RestartGenerator::new(),
             clauses,
         }
     }
@@ -345,8 +400,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
     }
 
     fn should_restart(&mut self) -> bool {
-        // TODO: implement
-        false
+        self.restart_generator.should_restart()
     }
 
     fn add_learned_clause(&mut self, literals: Vec<Literal>) {
@@ -657,4 +711,27 @@ fn resolve(clause: &[Literal], clause2: &[Literal], var: Variable) -> Vec<Litera
         .filter(|&x| x.variable() != var)
         .unique()
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn luby_sequence_matches_oeis_a182105() {
+        // Values taken from the OEIS A182105 listing
+        let expected = vec![
+            1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4,
+            8, 16, 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1,
+            2, 4, 8, 16, 32, 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8, 1, 1, 2, 1, 1, 2, 4, 1,
+            1, 2, 1, 1, 2, 4, 8, 16, 1, 1, 2, 1, 1, 2, 4, 1, 1, 2, 1, 1, 2, 4, 8,
+        ];
+
+        let mut seq = LubySequence::new();
+        for i in 0..(expected.len() - 1) {
+            assert_eq!(seq.current(), expected[i]);
+            let next_value = seq.next();
+            assert_eq!(next_value, expected[i + 1]);
+        }
+    }
 }
