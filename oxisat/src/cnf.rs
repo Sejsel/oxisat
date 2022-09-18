@@ -111,6 +111,13 @@ impl Literal {
     fn negated(self) -> Literal {
         Literal(-self.0)
     }
+
+    /// Returns the underlying value.
+    #[allow(unused)]
+    #[inline]
+    pub(crate) fn as_raw(self) -> VariableType {
+        self.0
+    }
 }
 
 impl std::ops::Not for Literal {
