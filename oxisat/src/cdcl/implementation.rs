@@ -21,6 +21,8 @@ struct RestartGenerator {
     non_resets_since: u64,
 }
 
+const RESTART_RUN_LENGTH: u64 = 100;
+
 impl RestartGenerator {
     fn new() -> Self {
         Self {
@@ -31,7 +33,7 @@ impl RestartGenerator {
 
     fn should_restart(&mut self) -> bool {
         self.non_resets_since += 1;
-        if self.non_resets_since >= self.seq.current() {
+        if self.non_resets_since >= self.seq.current() * RESTART_RUN_LENGTH {
             self.non_resets_since = 0;
             self.seq.next();
             true
