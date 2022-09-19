@@ -1,26 +1,29 @@
+mod branching;
+mod implementation;
 mod state;
 pub mod stats;
-mod implementation;
 
 #[cfg(test)]
 mod tests;
 
-use crate::cdcl::state::Reason;
 use crate::cnf::{Literal, Variable, VariableType, CNF};
 use crate::preprocessing;
 use crate::preprocessing::PreprocessingResult;
 use crate::sat::{Solution, VariableResults, VariableValue};
+use branching::BranchingHeuristic;
+use implementation::State;
+use state::Reason;
 use state::{VariableState, VariableStates};
 use stats::StatsStorage;
-use implementation::State;
 
+use crate::cdcl::branching::{ClausalVSIDS, LowestIndex};
 use static_assertions::const_assert;
 
 // We need decision level to be able to go as high as the max variable count.
 const_assert!(DecisionLevel::MAX as u128 >= VariableType::MAX as u128);
 type DecisionLevel = u32;
 
-trait CdclState<TStats: StatsStorage> {
+trait CdclState<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     fn new(cnf: CNF, max_variable: Variable) -> Self;
     fn decision_level(&self) -> DecisionLevel;
     fn set_decision_level(&mut self, level: DecisionLevel);
@@ -28,6 +31,7 @@ trait CdclState<TStats: StatsStorage> {
     fn pick_branch_literal(&self) -> Option<Literal>;
     fn into_result(self) -> (Solution, TStats);
     fn stats(&mut self) -> &mut TStats;
+    fn branching_heuristic(&mut self) -> &mut TBranch;
     fn next_unit_literal(&mut self) -> Option<(Literal, usize)>;
     fn analyze_conflict(&mut self, clause_index: usize) -> ConflictAnalysisResult;
     fn backtrack(&mut self, level: DecisionLevel);
@@ -45,7 +49,8 @@ trait CdclState<TStats: StatsStorage> {
 
 pub enum Implementation {
     Default,
-    WatchedLiterals,
+    BranchVSIDS,
+    BranchLowestIndex,
 }
 
 pub fn solve<TStatistics: StatsStorage>(
@@ -53,8 +58,11 @@ pub fn solve<TStatistics: StatsStorage>(
     implementation: Implementation,
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => solve_cnf::<State<TStatistics>, TStatistics>(cnf),
-        Implementation::WatchedLiterals => solve_cnf::<State<TStatistics>, TStatistics>(cnf),
+        Implementation::Default => solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf),
+        Implementation::BranchVSIDS => solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf),
+        Implementation::BranchLowestIndex => {
+            solve_cnf::<State<TStatistics, LowestIndex>, _, _>(cnf)
+        }
     }
 }
 
@@ -95,7 +103,13 @@ fn solve_cnf_without_variables<TStats: StatsStorage>(cnf: &CNF) -> (Solution, TS
     }
 }
 
-fn solve_cnf<TState: CdclState<TStats>, TStats: StatsStorage>(cnf: &CNF) -> (Solution, TStats) {
+fn solve_cnf<
+    TState: CdclState<TStats, TBranch>,
+    TStats: StatsStorage,
+    TBranch: BranchingHeuristic,
+>(
+    cnf: &CNF,
+) -> (Solution, TStats) {
     let max_variable = match cnf.max_variable() {
         Some(max) => max,
         None => return solve_cnf_without_variables(cnf),
@@ -124,7 +138,7 @@ fn solve_cnf<TState: CdclState<TStats>, TStats: StatsStorage>(cnf: &CNF) -> (Sol
     }
 }
 
-fn cdcl<TState: CdclState<TStatistics>, TStatistics: StatsStorage>(
+fn cdcl<TState: CdclState<TStats, TBranch>, TStats: StatsStorage, TBranch: BranchingHeuristic>(
     state: &mut TState,
 ) -> CdclOutcome {
     state.set_decision_level(0);
@@ -156,12 +170,13 @@ fn cdcl<TState: CdclState<TStatistics>, TStatistics: StatsStorage>(
             match conflict_result.outcome {
                 ConflictOutcome::NewClause(lits) => {
                     state.stats().increment_learned_clauses();
-                    state.add_learned_clause(lits)
-                },
+                    state.branching_heuristic().register_new_clause(&lits);
+                    state.add_learned_clause(lits);
+                }
                 ConflictOutcome::ForcedVariableValue(lit) => {
                     state.stats().increment_learned_literals();
-                    state.add_learned_lit(lit)
-                },
+                    state.add_learned_lit(lit);
+                }
             }
 
             if state.should_restart() {
@@ -181,7 +196,11 @@ enum UnitPropagationOutcome {
     Conflict { clause_index: usize },
 }
 
-fn unit_propagation<TState: CdclState<TStatistics>, TStatistics: StatsStorage>(
+fn unit_propagation<
+    TState: CdclState<TStats, TBranch>,
+    TStats: StatsStorage,
+    TBranch: BranchingHeuristic,
+>(
     state: &mut TState,
 ) -> UnitPropagationOutcome {
     while let Some((literal, clause_index)) = state.next_unit_literal() {

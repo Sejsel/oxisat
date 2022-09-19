@@ -2,7 +2,7 @@ use super::*;
 use itertools::Itertools;
 use std::mem;
 
-pub(crate) struct State<TStats: StatsStorage> {
+pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     decision_level: DecisionLevel,
     variables: VariableStates,
     variable_stack: Vec<SetUnsetVariable>,
@@ -13,6 +13,7 @@ pub(crate) struct State<TStats: StatsStorage> {
     #[allow(unused)]
     original_clause_count: usize,
     restart_generator: RestartGenerator,
+    branching_heuristic: TBranch,
     stats: TStats,
 }
 
@@ -177,7 +178,9 @@ impl WatchedLiteralMap {
     }
 }
 
-impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
+impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranch>
+    for State<TStats, TBranch>
+{
     fn new(cnf: CNF, max_variable: Variable) -> Self {
         for clause in cnf.clauses.iter() {
             assert!(clause.literals.len() > 1);
@@ -195,6 +198,9 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
             })
             .collect();
 
+        let mut branching_heuristic: TBranch = Default::default();
+        branching_heuristic.initialize(max_variable);
+
         State {
             decision_level: 0,
             variables: VariableStates::new_unset(max_variable),
@@ -206,6 +212,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
             unit_candidate_indices: Vec::new(),
             original_clause_count: clauses.len(),
             restart_generator: RestartGenerator::new(),
+            branching_heuristic,
             clauses,
         }
     }
@@ -233,13 +240,7 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
 
     #[inline]
     fn pick_branch_literal(&self) -> Option<Literal> {
-        // We choose the variable with the lowest index. We also always choose true.
-        self.variables
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_, x)| x.is_unset())
-            .map(|(i, _)| Literal::new(Variable::new(i as VariableType), true))
+        self.branching_heuristic.choose_literal(&self.variables)
     }
 
     fn into_result(self) -> (Solution, TStats) {
@@ -253,6 +254,11 @@ impl<TStats: StatsStorage> CdclState<TStats> for State<TStats> {
     #[inline]
     fn stats(&mut self) -> &mut TStats {
         &mut self.stats
+    }
+
+    #[inline]
+    fn branching_heuristic(&mut self) -> &mut TBranch {
+        &mut self.branching_heuristic
     }
 
     #[inline]
@@ -482,7 +488,7 @@ enum WatchUpdateResult {
     Unsatisfiable,
 }
 
-impl<TStats: StatsStorage> State<TStats> {
+impl<TStats: StatsStorage, TBranch: BranchingHeuristic> State<TStats, TBranch> {
     fn update_watches(
         literal: Literal,
         watched_clause: &WatchedClause,
@@ -590,7 +596,7 @@ impl<TStats: StatsStorage> State<TStats> {
     }
 }
 
-impl<TStats: StatsStorage> State<TStats> {
+impl<TStats: StatsStorage, TBranch: BranchingHeuristic> State<TStats, TBranch> {
     fn set_variable_update_watches(&mut self, negated_literal: Literal) -> SetVariableOutcome {
         // Unfortunately, we cannot use helper methods here as the borrow checker wouldn't
         // understand that we are borrowing separate parts (literals/clauses) of the struct.

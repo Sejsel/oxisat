@@ -19,7 +19,7 @@ struct Args {
     #[clap(short, long)]
     no_stats: bool,
 
-    #[clap(short, long, arg_enum, default_value_t = Implementation::DpllDefault)]
+    #[clap(short, long, arg_enum, default_value_t = Implementation::Dpll)]
     implementation: Implementation,
 
     #[clap(group = "input")]
@@ -28,11 +28,32 @@ struct Args {
 
 #[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
 enum Implementation {
-    DpllDefault,
+    Dpll,
     DpllCnfTransforming,
     DpllClauseMapping,
     DpllWatchedLiterals,
     Cdcl,
+    CdclVsids,
+    CdclLowestIndex,
+}
+
+enum Algorithm {
+    Dpll,
+    Cdcl
+}
+
+impl Implementation {
+    fn algorithm(&self) -> Algorithm {
+        match self {
+            Implementation::Dpll => Algorithm::Dpll,
+            Implementation::DpllCnfTransforming => Algorithm::Dpll,
+            Implementation::DpllClauseMapping => Algorithm::Dpll,
+            Implementation::DpllWatchedLiterals => Algorithm::Dpll,
+            Implementation::Cdcl => Algorithm::Cdcl,
+            Implementation::CdclVsids => Algorithm::Cdcl,
+            Implementation::CdclLowestIndex => Algorithm::Cdcl,
+        }
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -68,13 +89,22 @@ fn main() -> anyhow::Result<()> {
 
     let start_time = Instant::now();
 
-    let solution = match args.implementation {
-        Implementation::Cdcl => {
+    let solution = match args.implementation.algorithm() {
+        Algorithm::Cdcl => {
+            let cdcl_impl = match args.implementation {
+                Implementation::Cdcl => cdcl::Implementation::Default,
+                Implementation::CdclVsids => cdcl::Implementation::BranchVSIDS,
+                Implementation::CdclLowestIndex => cdcl::Implementation::BranchLowestIndex,
+                Implementation::Dpll => unreachable!(),
+                Implementation::DpllCnfTransforming => unreachable!(),
+                Implementation::DpllClauseMapping => unreachable!(),
+                Implementation::DpllWatchedLiterals => unreachable!(),
+            };
             let (solution, stats) = if !args.no_stats {
-                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl::Implementation::Default);
+                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl);
                 (solution, Some(stats))
             } else {
-                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl::Implementation::Default);
+                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl_impl);
                 (solution, None)
             };
 
@@ -124,13 +154,15 @@ fn main() -> anyhow::Result<()> {
 
             solution
         }
-        _ => {
+        Algorithm::Dpll => {
             let dpll_impl = match args.implementation {
-                Implementation::DpllDefault => dpll::Implementation::Default,
+                Implementation::Dpll => dpll::Implementation::Default,
                 Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
                 Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
                 Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,
                 Implementation::Cdcl => unreachable!(),
+                Implementation::CdclVsids => unreachable!(),
+                Implementation::CdclLowestIndex => unreachable!(),
             };
 
             let (solution, stats) = if !args.no_stats {
