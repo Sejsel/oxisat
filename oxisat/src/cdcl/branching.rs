@@ -11,20 +11,16 @@ pub(crate) trait BranchingHeuristic: Default {
 ///
 /// This heuristic does not consider literals that are used for conflict analysis, only
 /// literals from the resulting clause.
+///
+/// This is a variant of VSIDS used by the Chaff solver.
+#[derive(Default)]
 pub struct ClausalVSIDS {
     weights: Vec<f32>,
 }
 
 /// This heuristic chooses the unset variable with the lowest index.
+#[derive(Default)]
 pub struct LowestIndex {}
-
-impl Default for ClausalVSIDS {
-    fn default() -> Self {
-        Self {
-            weights: Vec::new(),
-        }
-    }
-}
 
 impl BranchingHeuristic for ClausalVSIDS {
     fn initialize(&mut self, max_var: Variable) {
@@ -55,12 +51,6 @@ impl BranchingHeuristic for ClausalVSIDS {
     }
 }
 
-impl Default for LowestIndex {
-    fn default() -> Self {
-        Self {}
-    }
-}
-
 impl BranchingHeuristic for LowestIndex {
     #[inline]
     fn initialize(&mut self, _: Variable) {}
@@ -74,6 +64,6 @@ impl BranchingHeuristic for LowestIndex {
             .map(|(i, _)| Literal::new(Variable::new(i as VariableType), true))
     }
 
-    #[inline]
+    #[inline(always)]
     fn register_new_clause(&mut self, _: &[Literal]) {}
 }
