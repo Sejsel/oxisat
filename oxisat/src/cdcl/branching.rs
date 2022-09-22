@@ -35,6 +35,7 @@ impl BranchingHeuristic for ClausalVSIDS {
         self.weights
             .iter()
             .enumerate()
+            .skip(1)
             .filter(|(i, _)| states.is_unset(Variable::new(*i as VariableType)))
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
             .map(|(i, _)| Literal::new(Variable::new(i as VariableType), true))
