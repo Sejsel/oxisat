@@ -36,6 +36,7 @@ trait CdclState<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     fn analyze_conflict(&mut self, clause_index: usize) -> ConflictAnalysisResult;
     fn backtrack(&mut self, level: DecisionLevel);
     fn should_restart(&mut self) -> bool;
+    fn restart(&mut self);
     fn set_variable_to_literal(&mut self, literal: Literal, reason: Reason) -> SetVariableOutcome;
     fn set_variable(
         &mut self,
@@ -182,6 +183,7 @@ fn cdcl<TState: CdclState<TStats, TBranch>, TStats: StatsStorage, TBranch: Branc
             if state.should_restart() {
                 state.stats().increment_restarts();
                 state.backtrack(0);
+                state.restart();
             }
         }
     }

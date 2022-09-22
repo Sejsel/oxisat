@@ -13,6 +13,7 @@ pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     #[allow(unused)]
     original_clause_count: usize,
     restart_generator: RestartGenerator,
+    max_learned_clauses: usize,
     branching_heuristic: TBranch,
     stats: TStats,
 }
@@ -22,6 +23,8 @@ struct RestartGenerator {
     non_resets_since: u64,
 }
 
+const MAX_LEARNED_CLAUSES_DEFAULT: usize = 100;
+const MAX_LEARNED_CLAUSES_MULT: f32 = 1.1;
 const RESTART_RUN_LENGTH: u64 = 100;
 
 impl RestartGenerator {
@@ -80,6 +83,7 @@ struct SetUnsetVariable {
 struct Clause {
     literals: Vec<Literal>,
     watched_literals: ClauseWatches,
+    lbd: u32
 }
 
 impl Clause {
@@ -195,6 +199,9 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
                     watch1: ClauseWatch { index: 0 },
                     watch2: ClauseWatch { index: 1 },
                 },
+                // This is not a learned clause, we default to a sane default of 0.
+                // This value should not even be looked at for non-learned clauses.
+                lbd: 0
             })
             .collect();
 
@@ -212,6 +219,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             unit_candidate_indices: Vec::new(),
             original_clause_count: clauses.len(),
             restart_generator: RestartGenerator::new(),
+            max_learned_clauses: MAX_LEARNED_CLAUSES_DEFAULT,
             branching_heuristic,
             clauses,
         }
@@ -413,12 +421,21 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
 
     fn add_learned_clause(&mut self, literals: Vec<Literal>) {
         debug_assert!(literals.len() >= 2);
+
+        // TODO: Optimize by using duplication detection
+        let lbd = literals.iter().map(|x| match self.variables.get(x.variable()) {
+            VariableState::Set { decision_level, .. } => *decision_level,
+            // There is currently only one unset literal (we used it to choose the backtracking level)
+            VariableState::Unset => self.decision_level + 1,
+        }).unique().count() as u32;
+
         let mut clause = Clause {
             literals,
             watched_literals: ClauseWatches {
                 watch1: ClauseWatch { index: 0 },
                 watch2: ClauseWatch { index: 1 },
             },
+            lbd,
         };
 
         // This clause is assertive.
@@ -478,6 +495,13 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
                 unreachable!("A new learned literal should never be conflicting")
             }
         }
+    }
+
+    fn restart(&mut self) {
+        self.max_learned_clauses =
+            (self.max_learned_clauses as f32 * MAX_LEARNED_CLAUSES_MULT).ceil() as usize;
+
+
     }
 }
 
