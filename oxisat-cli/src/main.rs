@@ -19,7 +19,7 @@ struct Args {
     #[clap(short, long)]
     no_stats: bool,
 
-    #[clap(short, long, arg_enum, default_value_t = Implementation::Dpll)]
+    #[clap(short, long, arg_enum, default_value_t = Implementation::Cdcl)]
     implementation: Implementation,
 
     #[clap(group = "input")]
@@ -139,6 +139,10 @@ fn main() -> anyhow::Result<()> {
                     "Restarts",
                     &stats.restarts().to_string(),
                 ]);
+                table.add_row(vec![
+                    "Deleted clauses",
+                    &stats.deleted_clauses().to_string(),
+                ]);
             } else {
                 table.add_row(vec!["Decisions", "not tracked"]);
                 table.add_row(vec!["Unit propagation derivations", "not tracked"]);
@@ -146,6 +150,7 @@ fn main() -> anyhow::Result<()> {
                 table.add_row(vec!["Learned clauses", "not tracked"]);
                 table.add_row(vec!["Learned literals", "not tracked"]);
                 table.add_row(vec!["Restarts", "not tracked"]);
+                table.add_row(vec!["Deleted clauses", "not tracked"]);
             }
             for line in table.lines() {
                 println!("c {line}");

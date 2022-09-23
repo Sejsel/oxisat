@@ -5,6 +5,7 @@ pub trait StatsStorage: Default {
     fn increment_learned_clauses(&mut self);
     fn increment_learned_literals(&mut self);
     fn increment_restarts(&mut self);
+    fn add_deleted_clauses(&mut self, deleted_count: u64);
 }
 
 #[derive(Default)]
@@ -17,6 +18,7 @@ pub struct Stats {
     clause_state_updates: u64,
     learned_clauses: u64,
     learned_literals: u64,
+    deleted_clauses: u64,
     restarts: u64,
 }
 
@@ -44,6 +46,10 @@ impl Stats {
     pub fn restarts(&self) -> u64 {
         self.restarts
     }
+
+    pub fn deleted_clauses(&self) -> u64 {
+        self.deleted_clauses
+    }
 }
 
 impl StatsStorage for NoStats {
@@ -59,6 +65,8 @@ impl StatsStorage for NoStats {
     fn increment_learned_literals(&mut self) {}
     #[inline(always)]
     fn increment_restarts(&mut self) {}
+    #[inline(always)]
+    fn add_deleted_clauses(&mut self, _: u64) {}
 }
 
 impl StatsStorage for Stats {
@@ -90,5 +98,10 @@ impl StatsStorage for Stats {
     #[inline]
     fn increment_restarts(&mut self) {
         self.restarts += 1;
+    }
+
+    #[inline]
+    fn add_deleted_clauses(&mut self, deleted_count: u64) {
+        self.deleted_clauses += deleted_count
     }
 }

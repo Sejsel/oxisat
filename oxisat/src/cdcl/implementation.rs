@@ -1,5 +1,6 @@
 use super::*;
 use itertools::Itertools;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
@@ -80,10 +81,11 @@ struct SetUnsetVariable {
     decision_level: DecisionLevel,
 }
 
+#[derive(Clone)]
 struct Clause {
     literals: Vec<Literal>,
     watched_literals: ClauseWatches,
-    lbd: u32
+    lbd: u32,
 }
 
 impl Clause {
@@ -127,6 +129,7 @@ struct ClauseWatch {
     index: usize,
 }
 
+#[derive(Clone)]
 struct ClauseWatches {
     watch1: ClauseWatch,
     watch2: ClauseWatch,
@@ -201,7 +204,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
                 },
                 // This is not a learned clause, we default to a sane default of 0.
                 // This value should not even be looked at for non-learned clauses.
-                lbd: 0
+                lbd: 0,
             })
             .collect();
 
@@ -423,11 +426,15 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
         debug_assert!(literals.len() >= 2);
 
         // TODO: Optimize by using duplication detection
-        let lbd = literals.iter().map(|x| match self.variables.get(x.variable()) {
-            VariableState::Set { decision_level, .. } => *decision_level,
-            // There is currently only one unset literal (we used it to choose the backtracking level)
-            VariableState::Unset => self.decision_level + 1,
-        }).unique().count() as u32;
+        let lbd = literals
+            .iter()
+            .map(|x| match self.variables.get(x.variable()) {
+                VariableState::Set { decision_level, .. } => *decision_level,
+                // There is currently only one unset literal (we used it to choose the backtracking level)
+                VariableState::Unset => self.decision_level + 1,
+            })
+            .unique()
+            .count() as u32;
 
         let mut clause = Clause {
             literals,
@@ -501,7 +508,84 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
         self.max_learned_clauses =
             (self.max_learned_clauses as f32 * MAX_LEARNED_CLAUSES_MULT).ceil() as usize;
 
+        // No variables are decided at this point.
+        debug_assert!(!self.variables.iter().any(|x| matches!(
+            x,
+            VariableState::Set {
+                reason: Reason::Decision,
+                ..
+            }
+        )));
 
+        let antecedent_indices: HashSet<usize> = self
+            .variables
+            .iter()
+            .filter_map(|x| match x {
+                VariableState::Set {
+                    reason: Reason::UnitPropagated { antecedent_index },
+                    ..
+                } => Some(*antecedent_index),
+                _ => None,
+            })
+            .collect();
+
+        let original_count = self.clauses.len();
+
+        // TODO: Optimize if needed.
+        let learned_clauses = &self.clauses[self.original_clause_count..];
+        let kept_clauses: Vec<_> = learned_clauses
+            .iter()
+            .cloned()
+            .enumerate()
+            .sorted_by_key(|(index, clause)| {
+                (
+                    !antecedent_indices.contains(&(self.original_clause_count + *index)),
+                    clause.lbd,
+                )
+            })
+            .enumerate()
+            .take_while(|(sorted_i, (i, clause))| {
+                antecedent_indices.contains(&(self.original_clause_count + *i))
+                    || clause.lbd <= 2
+                    || *sorted_i <= self.max_learned_clauses
+            }) // Keep all clauses that have LBD 2.
+            .map(|(_, pair)| pair)
+            .collect();
+
+        // Maps old indexes to new indexes
+        let old_to_new_map: HashMap<usize, usize> = kept_clauses
+            .iter()
+            .enumerate()
+            .map(|(new, (old, _))| {
+                (
+                    self.original_clause_count + *old,
+                    self.original_clause_count + new,
+                )
+            })
+            .collect();
+
+        let remap_index = |index: &mut usize| {
+            if *index < self.original_clause_count {
+                return true;
+            }
+            if let Some(new_index) = old_to_new_map.get(index) {
+                *index = *new_index;
+                return true;
+            }
+            false
+        };
+
+        // Remap clause indices
+        for lit in self.watched_literals.literals.iter_mut() {
+            lit.clauses.retain_mut(|x| remap_index(&mut x.index));
+        }
+        self.unit_candidate_indices.retain_mut(|x| remap_index(x));
+
+        self.clauses.truncate(self.original_clause_count);
+        self.clauses
+            .extend(kept_clauses.into_iter().map(|(_, clause)| clause));
+        self.stats
+            .add_deleted_clauses((original_count - self.clauses.len()) as u64);
     }
 }
 
