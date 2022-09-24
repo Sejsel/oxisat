@@ -1,21 +1,52 @@
 use super::*;
-use itertools::Itertools;
+use itertools::{merge, Itertools};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
+/// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
+const MAX_LEARNED_CLAUSES_DEFAULT: usize = 100;
+/// The multiplier which increases the max learned clauses count with each restart.
+const MAX_LEARNED_CLAUSES_MULT: f32 = 1.1;
+/// The amount of restarts done before the restart sequence is evaluated again.
+const RESTART_RUN_LENGTH: u64 = 100;
+
 pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
+    /// The current decision level (how many variables are currently decided in the variable stack).
     decision_level: DecisionLevel,
+    /// The state of variables.
     variables: VariableStates,
+    /// The stack of variable assignments for any reason.
+    ///
+    /// Learned variable values are not on the stack; they are set forever.
     variable_stack: Vec<SetUnsetVariable>,
+    /// Disjunctive clauses of the current problem
+    ///
+    /// This includes learned clauses from the [`original_clause_count`] index onward.
     clauses: Vec<Clause>,
+    /// Watched literal lookup map for literals.
     watched_literals: WatchedLiteralMap,
+    /// A list of clauses that may be unit.
+    ///
+    /// May also contain clauses that are not unit anymore.
     unit_candidate_indices: Vec<usize>,
+    /// A temporary storage for newly watched clauses.
+    ///
+    /// This is stored here to save on allocations.
     newly_watched_clauses: Vec<(Literal, WatchedClause)>,
-    #[allow(unused)]
+    /// The original clause count before any clauses were learned.
     original_clause_count: usize,
+    /// The restart generator, keeps track of whether restarts should be done.
     restart_generator: RestartGenerator,
+    /// The clause resolver.
+    ///
+    /// This is stored here to reuse internal Vecs to save on allocations.
+    resolver: ClauseResolver,
+    /// The internal limit on how many learned clauses are stored.
+    /// Increases over time. Exceptional clauses may be kept above this limit.
     max_learned_clauses: usize,
+    /// The branching heuristic with its internal state.
     branching_heuristic: TBranch,
+    /// The stats container.
     stats: TStats,
 }
 
@@ -23,10 +54,6 @@ struct RestartGenerator {
     seq: LubySequence,
     non_resets_since: u64,
 }
-
-const MAX_LEARNED_CLAUSES_DEFAULT: usize = 100;
-const MAX_LEARNED_CLAUSES_MULT: f32 = 1.1;
-const RESTART_RUN_LENGTH: u64 = 100;
 
 impl RestartGenerator {
     fn new() -> Self {
@@ -83,8 +110,13 @@ struct SetUnsetVariable {
 
 #[derive(Clone)]
 struct Clause {
+    /// The literals stored within this clause.
+    ///
+    /// Important invariant: literals are always sorted.
     literals: Vec<Literal>,
     watched_literals: ClauseWatches,
+    /// Literal Block Distance metric for learned clauses calculated during conflict analysis.
+    /// The value is `0` for original clauses.
     lbd: u32,
 }
 
@@ -193,7 +225,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             assert!(clause.literals.len() > 1);
         }
 
-        let clauses: Vec<_> = cnf
+        let mut clauses: Vec<_> = cnf
             .clauses
             .into_iter()
             .map(|x| Clause {
@@ -207,6 +239,10 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
                 lbd: 0,
             })
             .collect();
+
+        for clause in &mut clauses {
+            clause.literals.sort()
+        }
 
         let mut branching_heuristic: TBranch = Default::default();
         branching_heuristic.initialize(max_variable);
@@ -222,6 +258,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             unit_candidate_indices: Vec::new(),
             original_clause_count: clauses.len(),
             restart_generator: RestartGenerator::new(),
+            resolver: ClauseResolver::new(),
             max_learned_clauses: MAX_LEARNED_CLAUSES_DEFAULT,
             branching_heuristic,
             clauses,
@@ -323,8 +360,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
         // The top of the change stack has the variable that caused the conflict.
         debug_assert!(!self.variable_stack.is_empty());
 
-        // TODO: save in state and reuse
-        let mut clause = self.clauses[clause_index].literals.clone();
+        self.resolver.start(&self.clauses[clause_index].literals);
 
         for set_variable in self.variable_stack.iter().rev() {
             match self.variables.get(set_variable.variable) {
@@ -332,25 +368,18 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
                     reason: Reason::UnitPropagated { antecedent_index },
                     ..
                 } => {
-                    // TODO: optimize
-                    if clause.iter().all(|x| x.variable() != set_variable.variable) {
+                    if !self.resolver.contains(set_variable.variable) {
                         // This variable is not a parent of the conflict
                         continue;
                     }
 
                     let antecedent = &self.clauses[*antecedent_index];
-                    clause = resolve(&clause, &antecedent.literals, set_variable.variable);
+                    self.resolver
+                        .resolve(&antecedent.literals, set_variable.variable);
 
-                    // TODO: optimize (by keeping track?)
-                    let lits_set_at_current_decision_level = clause
-                        .iter()
-                        .filter(|x| match self.variables.get(x.variable()) {
-                            VariableState::Set { decision_level, .. } => {
-                                *decision_level == self.decision_level
-                            }
-                            VariableState::Unset => unreachable!(),
-                        })
-                        .count();
+                    let lits_set_at_current_decision_level = self
+                        .resolver
+                        .lits_set_at_decision_level(&self.variables, self.decision_level);
 
                     let is_uip = lits_set_at_current_decision_level == 1;
                     if is_uip {
@@ -372,6 +401,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             };
         }
 
+        let clause = self.resolver.finish();
         debug_assert!(!clause.is_empty());
 
         if clause.len() == 1 {
@@ -381,10 +411,9 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             };
         }
 
-        // todo: add fn for this
         // backtrack level = assertion level (second highest in clause)
         let mut assertion_level = 0;
-        for &lit in &clause {
+        for &lit in clause {
             let decision_level = match self.variables.get(lit.variable()) {
                 VariableState::Set { decision_level, .. } => *decision_level,
                 VariableState::Unset => unreachable!(),
@@ -396,7 +425,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
 
         ConflictAnalysisResult {
             backtrack_level: assertion_level,
-            outcome: ConflictOutcome::NewClause(clause),
+            outcome: ConflictOutcome::NewClause(clause.to_vec()),
         }
     }
 
@@ -517,6 +546,8 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             }
         )));
 
+        // TODO: Optimize, there is a lot of inefficient hashing being used.
+
         let antecedent_indices: HashSet<usize> = self
             .variables
             .iter()
@@ -531,7 +562,6 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
 
         let original_count = self.clauses.len();
 
-        // TODO: Optimize if needed.
         let learned_clauses = &self.clauses[self.original_clause_count..];
         let kept_clauses: Vec<_> = learned_clauses
             .iter()
@@ -811,27 +841,84 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> State<TStats, TBranch> {
     }
 }
 
-// TODO: remove need for allocation and optimize
-fn resolve(clause: &[Literal], clause2: &[Literal], var: Variable) -> Vec<Literal> {
-    debug_assert!(
-        (clause.iter().any(|x| *x == Literal::new(var, true))
-            && clause2.iter().any(|x| *x == Literal::new(var, false)))
-            || (clause.iter().any(|x| *x == Literal::new(var, false))
-                && clause2.iter().any(|x| *x == Literal::new(var, true)))
-    );
+struct ClauseResolver {
+    current: Vec<Literal>,
+    next: Vec<Literal>,
+}
 
-    [clause, clause2]
-        .concat()
-        .iter()
-        .copied()
-        .filter(|&x| x.variable() != var)
-        .unique()
-        .collect()
+impl ClauseResolver {
+    fn new() -> Self {
+        ClauseResolver {
+            current: Vec::new(),
+            next: Vec::new(),
+        }
+    }
+    fn start(&mut self, lits: &[Literal]) {
+        // Check the "is sorted" invariant.
+        debug_assert!(lits.windows(2).all(|w| w[0] <= w[1]));
+        self.current.clear();
+        self.current.extend(lits);
+    }
+
+    fn resolve(&mut self, lits: &[Literal], var: Variable) {
+        // Check the "is sorted" invariant.
+        debug_assert!(lits.windows(2).all(|w| w[0] <= w[1]));
+
+        self.next.clear();
+        self.next.extend(
+            merge(
+                self.current.iter().copied().filter(|x| x.variable() != var),
+                lits.iter().copied().filter(|x| x.variable() != var),
+            )
+            .dedup(),
+        );
+
+        mem::swap(&mut self.next, &mut self.current);
+
+        debug_assert!(self.current.iter().all_unique());
+    }
+
+    fn contains(&self, variable: Variable) -> bool {
+        self.current.iter().any(|x| x.variable() == variable)
+    }
+
+    fn lits_set_at_decision_level(
+        &self,
+        variables: &VariableStates,
+        level: DecisionLevel,
+    ) -> usize {
+        self.current
+            .iter()
+            .filter(|x| match variables.get(x.variable()) {
+                VariableState::Set { decision_level, .. } => *decision_level == level,
+                VariableState::Unset => unreachable!(),
+            })
+            .count()
+    }
+
+    fn finish(&self) -> &[Literal] {
+        &self.current
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clause_resolver_simple() {
+        macro_rules! lit {
+            ($lit:expr) => {
+                $crate::cnf::Literal::from_raw_checked($lit)
+            };
+        }
+
+        let mut resolver = ClauseResolver::new();
+        resolver.start(&[lit!(-2), lit!(1), lit!(3)]);
+        resolver.resolve(&[lit!(2), lit!(4)], Variable::new(2));
+        resolver.resolve(&[lit!(-7), lit!(-3)], Variable::new(3));
+        assert_eq!(resolver.finish(), [lit!(-7), lit!(1), lit!(4)]);
+    }
 
     #[test]
     fn luby_sequence_matches_oeis_a182105() {

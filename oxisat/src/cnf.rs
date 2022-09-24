@@ -14,7 +14,7 @@ pub struct Variable(VariableType);
 
 /// Represents a literal, i.e. a variable with a set value (true or false).
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Literal(VariableType);
 
 /// Represents a CNF clause (a disjunction of literals).
@@ -67,7 +67,7 @@ impl Variable {
     /// Panics if `number <= 0` with a debug assert.
     /// The value is not checked when debug asserts are disabled.
     #[inline]
-    pub fn new(number: VariableType) -> Self {
+    pub const fn new(number: VariableType) -> Self {
         // For performance reasons, we only check this in debug mode.
         debug_assert!(number > 0);
         Variable(number)
@@ -82,11 +82,23 @@ impl Variable {
 impl Literal {
     /// Creates a new literal for a variable with a set value.
     #[inline]
-    pub fn new(variable: Variable, is_true: bool) -> Self {
+    pub const fn new(variable: Variable, is_true: bool) -> Self {
         if is_true {
             Literal(variable.0)
         } else {
             Literal(-variable.0)
+        }
+    }
+
+    /// Creates a new literal from a raw value, checking whether a valid value has been used.
+    #[inline]
+    pub const fn from_raw_checked(raw: VariableType) -> Self {
+        if raw > 0 {
+            Literal::new(Variable::new(raw), true)
+        } else if raw < 0 {
+            Literal::new(Variable::new(-raw), false)
+        } else {
+            panic!("Invalid raw value (0 is not permitted)")
         }
     }
 
