@@ -164,6 +164,7 @@ fn cdcl<TState: CdclState<TStats, TBranch>, TStats: StatsStorage, TBranch: Branc
                 return CdclOutcome::Unsatisfiable;
             }
 
+            state.stats().increment_conflicts();
             let conflict_result = state.analyze_conflict(clause_index);
 
             state.backtrack(conflict_result.backtrack_level);

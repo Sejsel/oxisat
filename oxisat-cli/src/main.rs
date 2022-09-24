@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use clap::{ArgEnum, Parser};
 use colored::Colorize;
-use comfy_table::Table;
+use comfy_table::{CellAlignment, Table};
 use nom::Finish;
 use oxisat::cnf::CNF;
 use oxisat::{cdcl, dpll};
@@ -111,46 +111,65 @@ fn main() -> anyhow::Result<()> {
             let elapsed_time = start_time.elapsed();
             println!("c");
             let mut table = Table::new();
-            table.load_preset(comfy_table::presets::NOTHING);
+            table.load_preset(comfy_table::presets::ASCII_BORDERS_ONLY_CONDENSED);
+            table.set_header(vec![
+                "Stat",
+                "Total",
+                "/s",
+            ]);
+            table.get_column_mut(1).unwrap().set_cell_alignment(CellAlignment::Right);
+            table.get_column_mut(2).unwrap().set_cell_alignment(CellAlignment::Right);
             table.add_row(vec![
                 "Time spent",
-                &format!("{:.7}s", elapsed_time.as_secs_f64()),
+                &format!("{:.4}s", elapsed_time.as_secs_f64()),
             ]);
 
+            let per_sec = |value: u64| -> String {
+                let stat = value as f64 / elapsed_time.as_secs_f64();
+                format!("{:.1}", stat)
+            };
+
             if let Some(stats) = stats {
-                table.add_row(vec!["Decisions", &stats.decisions().to_string()]);
+                table.add_row(vec![
+                    "Decisions",
+                    &stats.decisions().to_string(),
+                    &per_sec(stats.decisions())
+                ]);
+                table.add_row(vec![
+                    "Conflicts",
+                    &stats.conflicts().to_string(),
+                    &per_sec(stats.conflicts())
+                ]);
                 table.add_row(vec![
                     "Unit propagation derivations",
                     &stats.unit_propagation_steps().to_string(),
+                    &per_sec(stats.unit_propagation_steps())
                 ]);
                 table.add_row(vec![
                     "Clause state updates",
                     &stats.clause_state_updates().to_string(),
+                    &per_sec(stats.clause_state_updates())
                 ]);
                 table.add_row(vec![
                     "Learned clauses",
                     &stats.learned_clauses().to_string(),
+                    &per_sec(stats.learned_clauses())
                 ]);
                 table.add_row(vec![
                     "Learned literals",
                     &stats.learned_literals().to_string(),
+                    &per_sec(stats.learned_literals())
                 ]);
                 table.add_row(vec![
                     "Restarts",
                     &stats.restarts().to_string(),
+                    &per_sec(stats.restarts())
                 ]);
                 table.add_row(vec![
                     "Deleted clauses",
                     &stats.deleted_clauses().to_string(),
+                    &per_sec(stats.deleted_clauses())
                 ]);
-            } else {
-                table.add_row(vec!["Decisions", "not tracked"]);
-                table.add_row(vec!["Unit propagation derivations", "not tracked"]);
-                table.add_row(vec!["Clause state updates", "not tracked"]);
-                table.add_row(vec!["Learned clauses", "not tracked"]);
-                table.add_row(vec!["Learned literals", "not tracked"]);
-                table.add_row(vec!["Restarts", "not tracked"]);
-                table.add_row(vec!["Deleted clauses", "not tracked"]);
             }
             for line in table.lines() {
                 println!("c {line}");
