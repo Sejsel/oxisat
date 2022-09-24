@@ -6,7 +6,7 @@ use std::mem;
 /// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
 const MAX_LEARNED_CLAUSES_DEFAULT: usize = 100;
 /// The multiplier which increases the max learned clauses count with each restart.
-const MAX_LEARNED_CLAUSES_MULT: f32 = 1.1;
+const MAX_LEARNED_CLAUSES_MULT: f32 = 1.01;
 /// The amount of restarts done before the restart sequence is evaluated again.
 const RESTART_RUN_LENGTH: u64 = 100;
 
