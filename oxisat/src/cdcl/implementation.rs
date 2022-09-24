@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 
 /// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
-const MAX_LEARNED_CLAUSES_DEFAULT: usize = 100;
-/// The multiplier which increases the max learned clauses count with each restart.
-const MAX_LEARNED_CLAUSES_MULT: f32 = 1.01;
+const MAX_LEARNED_CLAUSES_DEFAULT: usize = 500;
+/// The added count which increases the max learned clauses count with each restart.
+const MAX_LEARNED_CLAUSES_ADD: usize = 10;
 /// The amount of restarts done before the restart sequence is evaluated again.
 const RESTART_RUN_LENGTH: u64 = 100;
 
@@ -534,8 +534,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
     }
 
     fn restart(&mut self) {
-        self.max_learned_clauses =
-            (self.max_learned_clauses as f32 * MAX_LEARNED_CLAUSES_MULT).ceil() as usize;
+        self.max_learned_clauses += MAX_LEARNED_CLAUSES_ADD;
 
         // No variables are decided at this point.
         debug_assert!(!self.variables.iter().any(|x| matches!(
