@@ -46,7 +46,7 @@ enum Commands {
         #[clap(short, long)]
         no_stats: bool,
 
-        /// 64-bit unsigned integer seed.
+        /// 64-bit unsigned integer seed (used only with random branching).
         #[clap(short, long)]
         seed: Option<u64>,
 
@@ -135,6 +135,10 @@ fn main() -> anyhow::Result<()> {
                 max_learned_clauses_default,
                 max_learned_clauses_add,
             };
+
+            if branching != CdclBranching::Random && seed != None {
+                println!("c WARNING: seed is not used for anything without random branching.")
+            }
 
             let cdcl_impl = match branching {
                 CdclBranching::Vsids => cdcl::Implementation::BranchVSIDS,
