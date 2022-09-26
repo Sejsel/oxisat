@@ -17,15 +17,20 @@ use state::{VariableState, VariableStates};
 use stats::StatsStorage;
 
 use crate::cdcl::branching::{ClausalVSIDS, LowestIndex, RandomChoice};
-use static_assertions::const_assert;
 use rand_pcg::Pcg64Mcg;
+use static_assertions::const_assert;
 
 // We need decision level to be able to go as high as the max variable count.
 const_assert!(DecisionLevel::MAX as u128 >= VariableType::MAX as u128);
 type DecisionLevel = u32;
 
 trait CdclState<TStats: StatsStorage, TBranch: BranchingHeuristic> {
-    fn new(cnf: CNF, max_variable: Variable, branching_heuristic: TBranch) -> Self;
+    fn new(
+        cnf: CNF,
+        max_variable: Variable,
+        params: ParamsConfig,
+        branching_heuristic: TBranch,
+    ) -> Self;
     fn decision_level(&self) -> DecisionLevel;
     fn set_decision_level(&mut self, level: DecisionLevel);
     fn all_variables_assigned(&self) -> bool;
@@ -53,21 +58,49 @@ pub enum Implementation {
     Default,
     BranchVSIDS,
     BranchLowestIndex,
-    BranchRandom {seed: u64},
+    BranchRandom { seed: u64 },
+}
+
+pub struct ParamsConfig {
+    /// The amount of restarts done before the restart sequence is evaluated again.
+    pub restart_run_length: u64,
+    /// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
+    pub max_learned_clauses_default: usize,
+    /// The added count which increases the max learned clauses count with each restart.
+    pub max_learned_clauses_add: usize,
+}
+
+impl Default for ParamsConfig {
+    fn default() -> Self {
+        ParamsConfig {
+            restart_run_length: 100,
+            max_learned_clauses_default: 500,
+            max_learned_clauses_add: 10
+        }
+    }
 }
 
 pub fn solve<TStatistics: StatsStorage>(
     cnf: &CNF,
     implementation: Implementation,
+    params: ParamsConfig,
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, Default::default()),
-        Implementation::BranchVSIDS => solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, Default::default()),
-        Implementation::BranchLowestIndex => {
-            solve_cnf::<State<TStatistics, LowestIndex>, _, _>(cnf, Default::default())
+        Implementation::Default => {
+            solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, params, Default::default())
         }
-        Implementation::BranchRandom {seed} => {
-            solve_cnf::<State<TStatistics, RandomChoice<Pcg64Mcg>>, _, _>(cnf, RandomChoice::from_u64_seed(seed))
+        Implementation::BranchVSIDS => {
+            solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, params, Default::default())
+        }
+        Implementation::BranchLowestIndex => {
+            solve_cnf::<State<TStatistics, LowestIndex>, _, _>(cnf, params, Default::default())
+        }
+        Implementation::BranchRandom { seed } => {
+            solve_cnf::<State<TStatistics, RandomChoice<Pcg64Mcg>>, _, _>(
+                cnf,
+                params,
+                RandomChoice::from_u64_seed(seed),
+            )
         }
     }
 }
@@ -115,6 +148,7 @@ fn solve_cnf<
     TBranch: BranchingHeuristic,
 >(
     cnf: &CNF,
+    params: ParamsConfig,
     branching_heuristic: TBranch,
 ) -> (Solution, TStats) {
     let max_variable = match cnf.max_variable() {
@@ -131,7 +165,7 @@ fn solve_cnf<
             new_max_variable, ..
         } => {
             let (solution, stats) = if let Some(max_variable) = new_max_variable {
-                let mut state = TState::new(cnf, max_variable, branching_heuristic);
+                let mut state = TState::new(cnf, max_variable, params, branching_heuristic);
 
                 let _ = cdcl(&mut state);
                 state.into_result()

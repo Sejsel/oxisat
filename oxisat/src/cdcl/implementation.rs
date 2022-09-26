@@ -3,13 +3,6 @@ use itertools::{merge, Itertools};
 use std::collections::{HashMap, HashSet};
 use std::mem;
 
-/// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
-const MAX_LEARNED_CLAUSES_DEFAULT: usize = 500;
-/// The added count which increases the max learned clauses count with each restart.
-const MAX_LEARNED_CLAUSES_ADD: usize = 10;
-/// The amount of restarts done before the restart sequence is evaluated again.
-const RESTART_RUN_LENGTH: u64 = 100;
-
 pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     /// The current decision level (how many variables are currently decided in the variable stack).
     decision_level: DecisionLevel,
@@ -46,6 +39,8 @@ pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     max_learned_clauses: usize,
     /// The branching heuristic with its internal state.
     branching_heuristic: TBranch,
+    /// Configuration of various parameters.
+    params: ParamsConfig,
     /// The stats container.
     stats: TStats,
 }
@@ -63,9 +58,9 @@ impl RestartGenerator {
         }
     }
 
-    fn should_restart(&mut self) -> bool {
+    fn should_restart(&mut self, run_length: u64) -> bool {
         self.non_resets_since += 1;
-        if self.non_resets_since >= self.seq.current() * RESTART_RUN_LENGTH {
+        if self.non_resets_since >= self.seq.current() * run_length {
             self.non_resets_since = 0;
             self.seq.next();
             true
@@ -220,7 +215,7 @@ impl WatchedLiteralMap {
 impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranch>
     for State<TStats, TBranch>
 {
-    fn new(cnf: CNF, max_variable: Variable, mut branching_heuristic: TBranch) -> Self {
+    fn new(cnf: CNF, max_variable: Variable, params: ParamsConfig, mut branching_heuristic: TBranch) -> Self {
         for clause in cnf.clauses.iter() {
             assert!(clause.literals.len() > 1);
         }
@@ -258,7 +253,8 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             original_clause_count: clauses.len(),
             restart_generator: RestartGenerator::new(),
             resolver: ClauseResolver::new(),
-            max_learned_clauses: MAX_LEARNED_CLAUSES_DEFAULT,
+            max_learned_clauses: params.max_learned_clauses_default,
+            params,
             branching_heuristic,
             clauses,
         }
@@ -447,7 +443,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
     }
 
     fn should_restart(&mut self) -> bool {
-        self.restart_generator.should_restart()
+        self.restart_generator.should_restart(self.params.restart_run_length)
     }
 
     fn add_learned_clause(&mut self, literals: Vec<Literal>) {
@@ -533,7 +529,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
     }
 
     fn restart(&mut self) {
-        self.max_learned_clauses += MAX_LEARNED_CLAUSES_ADD;
+        self.max_learned_clauses += self.params.max_learned_clauses_add;
 
         // No variables are decided at this point.
         debug_assert!(!self.variables.iter().any(|x| matches!(

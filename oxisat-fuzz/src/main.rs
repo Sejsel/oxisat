@@ -98,7 +98,7 @@ fn main() {
         fn solve(implementation: Implementation, cnf: &CNF) -> Solution
         {
             match implementation {
-                Implementation::Cdcl => cdcl::solve::<cdcl::stats::NoStats>(cnf, cdcl::Implementation::Default).0,
+                Implementation::Cdcl => cdcl::solve::<cdcl::stats::NoStats>(cnf, cdcl::Implementation::Default, Default::default()).0,
                 Implementation::DpllWatchedLiterals => dpll::solve::<dpll::stats::NoStats>(cnf, dpll::Implementation::WatchedLiterals).0,
                 Implementation::DpllClauseMapping => dpll::solve::<dpll::stats::NoStats>(cnf, dpll::Implementation::ClauseMapping).0,
                 Implementation::DpllCnfTransforming => dpll::solve::<dpll::stats::NoStats>(cnf, dpll::Implementation::CnfTransforming).0,

@@ -12,6 +12,7 @@ use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
 use std::time::Instant;
+use oxisat::cdcl::ParamsConfig;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -48,6 +49,18 @@ enum Commands {
         /// 64-bit unsigned integer seed.
         #[clap(short, long)]
         seed: Option<u64>,
+
+        /// The amount of restarts done before the restart sequence is evaluated again.
+        #[clap(long, default_value_t = 100)]
+        restart_run_length: u64,
+
+        /// The default count of max learned clauses. Exceptional clauses may be kept above this limit.
+        #[clap(long, default_value_t = 500)]
+        max_learned_clauses_default: usize,
+
+        /// The added count which increases the max learned clauses count with each restart.
+        #[clap(long, default_value_t = 10)]
+        max_learned_clauses_add: usize,
 
         /// The DIMACS input file.
         #[clap(group = "input")]
@@ -108,29 +121,40 @@ fn main() -> anyhow::Result<()> {
     let solution = match args.command {
         Commands::Cdcl {
             branching,
+            restart_run_length,
+            max_learned_clauses_default,
+            max_learned_clauses_add,
             input_file,
             no_stats,
             seed,
         } => {
             let cnf = read_input(input_file)?;
 
+            let params = ParamsConfig {
+                restart_run_length,
+                max_learned_clauses_default,
+                max_learned_clauses_add,
+            };
+
             let cdcl_impl = match branching {
                 CdclBranching::Vsids => cdcl::Implementation::BranchVSIDS,
                 CdclBranching::LowestIndex => cdcl::Implementation::BranchLowestIndex,
-                CdclBranching::Random => cdcl::Implementation::BranchRandom { seed: match seed {
-                    None => {
-                        let seed = thread_rng().gen();
-                        println!("c Using random seed {seed}");
-                        seed
+                CdclBranching::Random => cdcl::Implementation::BranchRandom {
+                    seed: match seed {
+                        None => {
+                            let seed = thread_rng().gen();
+                            println!("c Using random seed {seed}");
+                            seed
+                        }
+                        Some(seed) => seed,
                     },
-                    Some(seed) => seed,
-                } },
+                },
             };
             let (solution, stats) = if !no_stats {
-                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl);
+                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl, params);
                 (solution, Some(stats))
             } else {
-                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl_impl);
+                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl_impl, params);
                 (solution, None)
             };
 
