@@ -521,6 +521,7 @@ dependencies = [
  "comfy-table",
  "nom",
  "oxisat",
+ "rand",
 ]
 
 [[package]]

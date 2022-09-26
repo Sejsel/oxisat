@@ -4,9 +4,10 @@ use colored::Colorize;
 use comfy_table::{CellAlignment, Table};
 use nom::Finish;
 use oxisat::cnf::CNF;
-use oxisat::{cdcl, dpll};
 use oxisat::dpll::stats::{NoStats, Stats};
 use oxisat::sat::{Solution, VariableValue};
+use oxisat::{cdcl, dpll};
+use rand::prelude::*;
 use std::env;
 use std::fs::File;
 use std::io::{stdin, Read};
@@ -44,10 +45,14 @@ enum Commands {
         #[clap(short, long)]
         no_stats: bool,
 
+        /// 64-bit unsigned integer seed.
+        #[clap(short, long)]
+        seed: Option<u64>,
+
         /// The DIMACS input file.
         #[clap(group = "input")]
         input_file: Option<String>,
-    }
+    },
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
@@ -61,7 +66,7 @@ enum DpllImplementation {
 enum CdclBranching {
     Vsids,
     LowestIndex,
-    // TODO: Random choice + seed
+    Random,
 }
 
 fn read_input(input_file: Option<String>) -> Result<CNF, anyhow::Error> {
@@ -101,12 +106,25 @@ fn main() -> anyhow::Result<()> {
     let start_time = Instant::now();
 
     let solution = match args.command {
-        Commands::Cdcl {branching, input_file, no_stats } => {
+        Commands::Cdcl {
+            branching,
+            input_file,
+            no_stats,
+            seed,
+        } => {
             let cnf = read_input(input_file)?;
 
             let cdcl_impl = match branching {
                 CdclBranching::Vsids => cdcl::Implementation::BranchVSIDS,
                 CdclBranching::LowestIndex => cdcl::Implementation::BranchLowestIndex,
+                CdclBranching::Random => cdcl::Implementation::BranchRandom { seed: match seed {
+                    None => {
+                        let seed = thread_rng().gen();
+                        println!("c Using random seed {seed}");
+                        seed
+                    },
+                    Some(seed) => seed,
+                } },
             };
             let (solution, stats) = if !no_stats {
                 let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl);
@@ -120,13 +138,15 @@ fn main() -> anyhow::Result<()> {
             println!("c");
             let mut table = Table::new();
             table.load_preset(comfy_table::presets::ASCII_BORDERS_ONLY_CONDENSED);
-            table.set_header(vec![
-                "Stat",
-                "Total",
-                "/s",
-            ]);
-            table.get_column_mut(1).unwrap().set_cell_alignment(CellAlignment::Right);
-            table.get_column_mut(2).unwrap().set_cell_alignment(CellAlignment::Right);
+            table.set_header(vec!["Stat", "Total", "/s"]);
+            table
+                .get_column_mut(1)
+                .unwrap()
+                .set_cell_alignment(CellAlignment::Right);
+            table
+                .get_column_mut(2)
+                .unwrap()
+                .set_cell_alignment(CellAlignment::Right);
             table.add_row(vec![
                 "Time spent",
                 &format!("{:.4}s", elapsed_time.as_secs_f64()),
@@ -141,42 +161,42 @@ fn main() -> anyhow::Result<()> {
                 table.add_row(vec![
                     "Decisions",
                     &stats.decisions().to_string(),
-                    &per_sec(stats.decisions())
+                    &per_sec(stats.decisions()),
                 ]);
                 table.add_row(vec![
                     "Conflicts",
                     &stats.conflicts().to_string(),
-                    &per_sec(stats.conflicts())
+                    &per_sec(stats.conflicts()),
                 ]);
                 table.add_row(vec![
                     "Unit propagation derivations",
                     &stats.unit_propagation_steps().to_string(),
-                    &per_sec(stats.unit_propagation_steps())
+                    &per_sec(stats.unit_propagation_steps()),
                 ]);
                 table.add_row(vec![
                     "Clause state updates",
                     &stats.clause_state_updates().to_string(),
-                    &per_sec(stats.clause_state_updates())
+                    &per_sec(stats.clause_state_updates()),
                 ]);
                 table.add_row(vec![
                     "Learned clauses",
                     &stats.learned_clauses().to_string(),
-                    &per_sec(stats.learned_clauses())
+                    &per_sec(stats.learned_clauses()),
                 ]);
                 table.add_row(vec![
                     "Learned literals",
                     &stats.learned_literals().to_string(),
-                    &per_sec(stats.learned_literals())
+                    &per_sec(stats.learned_literals()),
                 ]);
                 table.add_row(vec![
                     "Restarts",
                     &stats.restarts().to_string(),
-                    &per_sec(stats.restarts())
+                    &per_sec(stats.restarts()),
                 ]);
                 table.add_row(vec![
                     "Deleted clauses",
                     &stats.deleted_clauses().to_string(),
-                    &per_sec(stats.deleted_clauses())
+                    &per_sec(stats.deleted_clauses()),
                 ]);
             }
             for line in table.lines() {
@@ -186,7 +206,11 @@ fn main() -> anyhow::Result<()> {
 
             solution
         }
-        Commands::Dpll {implementation, input_file, no_stats } => {
+        Commands::Dpll {
+            implementation,
+            input_file,
+            no_stats,
+        } => {
             let cnf = read_input(input_file)?;
 
             let dpll_impl = match implementation {
@@ -202,7 +226,6 @@ fn main() -> anyhow::Result<()> {
                 let (solution, _) = dpll::solve::<NoStats>(&cnf, dpll_impl);
                 (solution, None)
             };
-
 
             let elapsed_time = start_time.elapsed();
             println!("c");
