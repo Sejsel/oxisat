@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use clap::{ArgEnum, Parser};
+use clap::{ArgEnum, Parser, Subcommand};
 use colored::Colorize;
 use comfy_table::{CellAlignment, Table};
 use nom::Finish;
@@ -15,52 +15,58 @@ use std::time::Instant;
 #[derive(Parser, Debug)]
 #[clap(version)]
 struct Args {
-    /// Do not calculate detailed stats; CPU time is still measured.
-    #[clap(short, long)]
-    no_stats: bool,
-
-    #[clap(short, long, arg_enum, default_value_t = Implementation::Cdcl)]
-    implementation: Implementation,
-
-    #[clap(group = "input")]
-    input_file: Option<String>,
+    #[clap(subcommand)]
+    command: Commands,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
-enum Implementation {
-    Dpll,
-    DpllCnfTransforming,
-    DpllClauseMapping,
-    DpllWatchedLiterals,
-    Cdcl,
-    CdclVsids,
-    CdclLowestIndex,
-}
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Run a DPLL solver.
+    Dpll {
+        #[clap(short, long, arg_enum, default_value_t = DpllImplementation::WatchedLiterals)]
+        implementation: DpllImplementation,
 
-enum Algorithm {
-    Dpll,
-    Cdcl
-}
+        /// Do not calculate detailed stats; CPU time is still measured.
+        #[clap(short, long)]
+        no_stats: bool,
 
-impl Implementation {
-    fn algorithm(&self) -> Algorithm {
-        match self {
-            Implementation::Dpll => Algorithm::Dpll,
-            Implementation::DpllCnfTransforming => Algorithm::Dpll,
-            Implementation::DpllClauseMapping => Algorithm::Dpll,
-            Implementation::DpllWatchedLiterals => Algorithm::Dpll,
-            Implementation::Cdcl => Algorithm::Cdcl,
-            Implementation::CdclVsids => Algorithm::Cdcl,
-            Implementation::CdclLowestIndex => Algorithm::Cdcl,
-        }
+        /// The DIMACS input file.
+        #[clap(group = "input")]
+        input_file: Option<String>,
+    },
+    /// Run a CDCL solver.
+    Cdcl {
+        /// The branching strategy used for decisions.
+        #[clap(short, long, arg_enum, default_value_t = CdclBranching::Vsids)]
+        branching: CdclBranching,
+
+        /// Do not calculate detailed stats; CPU time is still measured.
+        #[clap(short, long)]
+        no_stats: bool,
+
+        /// The DIMACS input file.
+        #[clap(group = "input")]
+        input_file: Option<String>,
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+#[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
+enum DpllImplementation {
+    CnfTransforming,
+    ClauseMapping,
+    WatchedLiterals,
+}
 
+#[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
+enum CdclBranching {
+    Vsids,
+    LowestIndex,
+    // TODO: Random choice + seed
+}
+
+fn read_input(input_file: Option<String>) -> Result<CNF, anyhow::Error> {
     let mut input = String::new();
-    if let Some(path) = args.input_file {
+    if let Some(path) = input_file {
         // TODO: Better error handling
         let mut f = File::open(path).expect("Failed to open provided file");
         f.read_to_string(&mut input)
@@ -79,28 +85,30 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    let cnf: CNF = dimacs.into();
+    Ok(cnf)
+}
+
+fn main() -> anyhow::Result<()> {
+    let args: Args = Args::parse();
+
     println!(
         "c {} {}",
         "oxisat".bright_yellow(),
         env!("CARGO_PKG_VERSION")
     );
 
-    let cnf: CNF = dimacs.into();
-
     let start_time = Instant::now();
 
-    let solution = match args.implementation.algorithm() {
-        Algorithm::Cdcl => {
-            let cdcl_impl = match args.implementation {
-                Implementation::Cdcl => cdcl::Implementation::Default,
-                Implementation::CdclVsids => cdcl::Implementation::BranchVSIDS,
-                Implementation::CdclLowestIndex => cdcl::Implementation::BranchLowestIndex,
-                Implementation::Dpll => unreachable!(),
-                Implementation::DpllCnfTransforming => unreachable!(),
-                Implementation::DpllClauseMapping => unreachable!(),
-                Implementation::DpllWatchedLiterals => unreachable!(),
+    let solution = match args.command {
+        Commands::Cdcl {branching, input_file, no_stats } => {
+            let cnf = read_input(input_file)?;
+
+            let cdcl_impl = match branching {
+                CdclBranching::Vsids => cdcl::Implementation::BranchVSIDS,
+                CdclBranching::LowestIndex => cdcl::Implementation::BranchLowestIndex,
             };
-            let (solution, stats) = if !args.no_stats {
+            let (solution, stats) = if !no_stats {
                 let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl);
                 (solution, Some(stats))
             } else {
@@ -178,18 +186,16 @@ fn main() -> anyhow::Result<()> {
 
             solution
         }
-        Algorithm::Dpll => {
-            let dpll_impl = match args.implementation {
-                Implementation::Dpll => dpll::Implementation::Default,
-                Implementation::DpllCnfTransforming => dpll::Implementation::CnfTransforming,
-                Implementation::DpllClauseMapping => dpll::Implementation::ClauseMapping,
-                Implementation::DpllWatchedLiterals => dpll::Implementation::WatchedLiterals,
-                Implementation::Cdcl => unreachable!(),
-                Implementation::CdclVsids => unreachable!(),
-                Implementation::CdclLowestIndex => unreachable!(),
+        Commands::Dpll {implementation, input_file, no_stats } => {
+            let cnf = read_input(input_file)?;
+
+            let dpll_impl = match implementation {
+                DpllImplementation::CnfTransforming => dpll::Implementation::CnfTransforming,
+                DpllImplementation::ClauseMapping => dpll::Implementation::ClauseMapping,
+                DpllImplementation::WatchedLiterals => dpll::Implementation::WatchedLiterals,
             };
 
-            let (solution, stats) = if !args.no_stats {
+            let (solution, stats) = if !no_stats {
                 let (solution, stats) = dpll::solve::<Stats>(&cnf, dpll_impl);
                 (solution, Some(stats))
             } else {
