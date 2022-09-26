@@ -506,6 +506,8 @@ dependencies = [
  "generic-tests",
  "itertools",
  "nom",
+ "rand",
+ "rand_pcg",
  "static_assertions",
 ]
 

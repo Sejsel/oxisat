@@ -220,7 +220,7 @@ impl WatchedLiteralMap {
 impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranch>
     for State<TStats, TBranch>
 {
-    fn new(cnf: CNF, max_variable: Variable) -> Self {
+    fn new(cnf: CNF, max_variable: Variable, mut branching_heuristic: TBranch) -> Self {
         for clause in cnf.clauses.iter() {
             assert!(clause.literals.len() > 1);
         }
@@ -244,7 +244,6 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             clause.literals.sort()
         }
 
-        let mut branching_heuristic: TBranch = Default::default();
         branching_heuristic.initialize(max_variable);
 
         State {
@@ -287,7 +286,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
     }
 
     #[inline]
-    fn pick_branch_literal(&self) -> Option<Literal> {
+    fn pick_branch_literal(&mut self) -> Option<Literal> {
         self.branching_heuristic.choose_literal(&self.variables)
     }
 
