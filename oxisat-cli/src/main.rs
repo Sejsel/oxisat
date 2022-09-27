@@ -79,6 +79,7 @@ enum DpllImplementation {
 enum CdclBranching {
     VsidsVar,
     VsidsLit,
+    JeroslowWang,
     LowestIndex,
     Random,
 }
@@ -143,6 +144,7 @@ fn main() -> anyhow::Result<()> {
                 CdclBranching::VsidsVar => cdcl::Implementation::BranchVSIDSVar,
                 CdclBranching::VsidsLit => cdcl::Implementation::BranchVSIDSLit,
                 CdclBranching::LowestIndex => cdcl::Implementation::BranchLowestIndex,
+                CdclBranching::JeroslowWang => cdcl::Implementation::JeroslowWang,
                 CdclBranching::Random => cdcl::Implementation::BranchRandom {
                     seed: match seed {
                         None => {

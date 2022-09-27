@@ -241,6 +241,10 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
 
         branching_heuristic.initialize(max_variable);
 
+        for clause in &clauses {
+            branching_heuristic.initialize_clause(&clause.literals);
+        }
+
         State {
             decision_level: 0,
             variables: VariableStates::new_unset(max_variable),
@@ -610,6 +614,11 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             .extend(kept_clauses.into_iter().map(|(_, clause)| clause));
         self.stats
             .add_deleted_clauses((original_count - self.clauses.len()) as u64);
+
+        self.branching_heuristic.restart();
+        for clause in &self.clauses {
+            self.branching_heuristic.add_clause_after_restart(&clause.literals);
+        }
     }
 }
 

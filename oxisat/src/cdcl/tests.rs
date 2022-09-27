@@ -13,6 +13,9 @@ mod cdcl {
     #[instantiate_tests(<State<NoStats, ClausalLitVSIDS>, _>)]
     mod vsids_lit {}
 
+    #[instantiate_tests(<State<NoStats, JeroslowWang>, _>)]
+    mod jeroslow_wang {}
+
     #[instantiate_tests(<State<NoStats, LowestIndex>, _>)]
     mod lowest_index {}
 
