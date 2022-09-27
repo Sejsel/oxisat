@@ -39,7 +39,7 @@ enum Commands {
     /// Run a CDCL solver.
     Cdcl {
         /// The branching strategy used for decisions.
-        #[clap(short, long, arg_enum, default_value_t = CdclBranching::VsidsVar)]
+        #[clap(short, long, arg_enum, default_value_t = CdclBranching::VsidsLit)]
         branching: CdclBranching,
 
         /// Do not calculate detailed stats; CPU time is still measured.
@@ -86,10 +86,8 @@ enum CdclBranching {
 fn read_input(input_file: Option<String>) -> Result<CNF, anyhow::Error> {
     let mut input = String::new();
     if let Some(path) = input_file {
-        // TODO: Better error handling
-        let mut f = File::open(path).expect("Failed to open provided file");
-        f.read_to_string(&mut input)
-            .expect("Failed to read provided file");
+        let mut f = File::open(path)?;
+        f.read_to_string(&mut input)?;
     } else {
         stdin().read_to_string(&mut input)?;
     }
