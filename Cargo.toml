@@ -4,4 +4,5 @@ members = [
     "oxisat",
     "oxisat-cli",
     "oxisat-fuzz",
+    "tools/formula2cnf",
 ]
