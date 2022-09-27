@@ -11,7 +11,7 @@ mod nnf;
 #[clap(version)]
 struct Args {
     /// Only use left-to-right implications. Equisatisfiable for NNF formulas.
-    #[clap(short, long)]
+    #[clap(short = 'l', long = "lr-only")]
     one_implication_only: bool,
 
     /// The simplified SMT-LIB NNF input file.
