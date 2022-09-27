@@ -7,10 +7,13 @@ mod cdcl {
     use crate::cnf::Clause;
     use crate::dimacs;
 
-    #[instantiate_tests(<State<NoStats, ClausalVSIDS>, ClausalVSIDS>)]
-    mod vsids {}
+    #[instantiate_tests(<State<NoStats, ClausalVarVSIDS>, _>)]
+    mod vsids_var {}
 
-    #[instantiate_tests(<State<NoStats, LowestIndex>, LowestIndex>)]
+    #[instantiate_tests(<State<NoStats, ClausalLitVSIDS>, _>)]
+    mod vsids_lit {}
+
+    #[instantiate_tests(<State<NoStats, LowestIndex>, _>)]
     mod lowest_index {}
 
     #[test]

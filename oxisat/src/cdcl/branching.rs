@@ -8,14 +8,26 @@ pub(crate) trait BranchingHeuristic {
     fn register_new_clause(&mut self, clause_literals: &[Literal]);
 }
 
-/// Clausal variant of the VSIDS (Variable State Independent Decaying Sum) heuristic.
+/// Clausal variant of the VSIDS (Variable State Independent Decaying Sum) heuristic
+/// with variable tracking.
 ///
 /// This heuristic does not consider literals that are used for conflict analysis, only
 /// literals from the resulting clause.
 ///
-/// This is a variant of VSIDS used by the Chaff solver.
+/// This heuristic always chooses true values and tracks activity for variables regardless
+/// of literal value.
 #[derive(Default)]
-pub struct ClausalVSIDS {
+pub struct ClausalVarVSIDS {
+    weights: Vec<f32>,
+}
+
+/// Clausal variant of the VSIDS (Variable State Independent Decaying Sum) heuristic
+/// with literal tracking.
+///
+/// This heuristic does not consider literals that are used for conflict analysis, only
+/// literals from the resulting clause.
+#[derive(Default)]
+pub struct ClausalLitVSIDS {
     weights: Vec<f32>,
 }
 
@@ -28,7 +40,7 @@ pub struct RandomChoice<T: Rng> {
     rng: T,
 }
 
-impl BranchingHeuristic for ClausalVSIDS {
+impl BranchingHeuristic for ClausalVarVSIDS {
     fn initialize(&mut self, max_var: Variable) {
         // We allocate one extra element to make indexing trivial.
         self.weights = vec![1.0; max_var.number() as usize + 1];
@@ -50,6 +62,49 @@ impl BranchingHeuristic for ClausalVSIDS {
     fn register_new_clause(&mut self, clause_literals: &[Literal]) {
         for lit in clause_literals {
             self.weights[lit.variable().number() as usize] += 1.0;
+        }
+
+        for weight in self.weights.iter_mut() {
+            *weight *= 0.95;
+        }
+    }
+}
+
+impl ClausalLitVSIDS {
+    #[inline]
+    fn literal_index(literal: Literal) -> usize {
+        let offset: usize = if literal.value() { 1 } else { 0 };
+        literal.variable().number() as usize * 2 + offset
+    }
+}
+
+impl BranchingHeuristic for ClausalLitVSIDS {
+    fn initialize(&mut self, max_var: Variable) {
+        // We allocate one extra element to make indexing trivial.
+        self.weights = vec![1.0; (max_var.number() + 1) as usize * 2];
+        // This prevents the invalid literal being chosen.
+        self.weights[0] = 0.0;
+        self.weights[1] = 0.0;
+    }
+
+    fn choose_literal(&mut self, states: &VariableStates) -> Option<Literal> {
+        // For now, we always choose true by default.
+        self.weights
+            .iter()
+            .enumerate()
+            .skip(2)
+            .filter(|(i, _)| states.is_unset(Variable::new((*i / 2) as VariableType)))
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(i, _)| {
+                let value = i % 2 != 0;
+                let var = Variable::new((i / 2) as VariableType);
+                Literal::new(var, value)
+            })
+    }
+
+    fn register_new_clause(&mut self, clause_literals: &[Literal]) {
+        for lit in clause_literals {
+            self.weights[Self::literal_index(*lit)] += 1.0;
         }
 
         for weight in self.weights.iter_mut() {

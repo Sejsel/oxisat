@@ -16,7 +16,7 @@ use state::Reason;
 use state::{VariableState, VariableStates};
 use stats::StatsStorage;
 
-use crate::cdcl::branching::{ClausalVSIDS, LowestIndex, RandomChoice};
+use crate::cdcl::branching::{ClausalVarVSIDS, ClausalLitVSIDS, LowestIndex, RandomChoice};
 use rand_pcg::Pcg64Mcg;
 use static_assertions::const_assert;
 
@@ -56,7 +56,8 @@ trait CdclState<TStats: StatsStorage, TBranch: BranchingHeuristic> {
 
 pub enum Implementation {
     Default,
-    BranchVSIDS,
+    BranchVSIDSVar,
+    BranchVSIDSLit,
     BranchLowestIndex,
     BranchRandom { seed: u64 },
 }
@@ -87,10 +88,13 @@ pub fn solve<TStatistics: StatsStorage>(
 ) -> (Solution, TStatistics) {
     match implementation {
         Implementation::Default => {
-            solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, params, Default::default())
+            solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(cnf, params, Default::default())
         }
-        Implementation::BranchVSIDS => {
-            solve_cnf::<State<TStatistics, ClausalVSIDS>, _, _>(cnf, params, Default::default())
+        Implementation::BranchVSIDSVar => {
+            solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(cnf, params, Default::default())
+        }
+        Implementation::BranchVSIDSLit => {
+            solve_cnf::<State<TStatistics, ClausalLitVSIDS>, _, _>(cnf, params, Default::default())
         }
         Implementation::BranchLowestIndex => {
             solve_cnf::<State<TStatistics, LowestIndex>, _, _>(cnf, params, Default::default())

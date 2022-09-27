@@ -39,7 +39,7 @@ enum Commands {
     /// Run a CDCL solver.
     Cdcl {
         /// The branching strategy used for decisions.
-        #[clap(short, long, arg_enum, default_value_t = CdclBranching::Vsids)]
+        #[clap(short, long, arg_enum, default_value_t = CdclBranching::VsidsVar)]
         branching: CdclBranching,
 
         /// Do not calculate detailed stats; CPU time is still measured.
@@ -77,7 +77,8 @@ enum DpllImplementation {
 
 #[derive(Debug, Eq, PartialEq, Clone, ArgEnum)]
 enum CdclBranching {
-    Vsids,
+    VsidsVar,
+    VsidsLit,
     LowestIndex,
     Random,
 }
@@ -141,7 +142,8 @@ fn main() -> anyhow::Result<()> {
             }
 
             let cdcl_impl = match branching {
-                CdclBranching::Vsids => cdcl::Implementation::BranchVSIDS,
+                CdclBranching::VsidsVar => cdcl::Implementation::BranchVSIDSVar,
+                CdclBranching::VsidsLit => cdcl::Implementation::BranchVSIDSLit,
                 CdclBranching::LowestIndex => cdcl::Implementation::BranchLowestIndex,
                 CdclBranching::Random => cdcl::Implementation::BranchRandom {
                     seed: match seed {
