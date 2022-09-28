@@ -1,6 +1,6 @@
 use super::*;
 use itertools::{merge, Itertools};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 
 pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
@@ -39,6 +39,8 @@ pub(crate) struct State<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     max_learned_clauses: usize,
     /// The branching heuristic with its internal state.
     branching_heuristic: TBranch,
+    /// Assumptions that will be used first time when branching.
+    assumptions: VecDeque<Literal>,
     /// Configuration of various parameters.
     params: ParamsConfig,
     /// The stats container.
@@ -261,6 +263,7 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
             params,
             branching_heuristic,
             clauses,
+            assumptions: VecDeque::new(),
         }
     }
 
@@ -287,7 +290,11 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
 
     #[inline]
     fn pick_branch_literal(&mut self) -> Option<Literal> {
-        self.branching_heuristic.choose_literal(&self.variables)
+        if let Some(assumption) = self.assumptions.pop_front() {
+            Some(assumption)
+        } else {
+            self.branching_heuristic.choose_literal(&self.variables)
+        }
     }
 
     fn into_result(self) -> (Solution, TStats) {
@@ -619,6 +626,10 @@ impl<TStats: StatsStorage, TBranch: BranchingHeuristic> CdclState<TStats, TBranc
         for clause in &self.clauses {
             self.branching_heuristic.add_clause_after_restart(&clause.literals);
         }
+    }
+
+    fn add_assumption(&mut self, literal: Literal) {
+        self.assumptions.push_back(literal)
     }
 }
 

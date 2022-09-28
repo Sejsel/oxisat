@@ -16,7 +16,9 @@ use state::Reason;
 use state::{VariableState, VariableStates};
 use stats::StatsStorage;
 
-use crate::cdcl::branching::{ClausalVarVSIDS, ClausalLitVSIDS, LowestIndex, RandomChoice, JeroslowWang};
+use crate::cdcl::branching::{
+    ClausalLitVSIDS, ClausalVarVSIDS, JeroslowWang, LowestIndex, RandomChoice,
+};
 use rand_pcg::Pcg64Mcg;
 use static_assertions::const_assert;
 
@@ -52,6 +54,7 @@ trait CdclState<TStats: StatsStorage, TBranch: BranchingHeuristic> {
     ) -> SetVariableOutcome;
     fn add_learned_clause(&mut self, literals: Vec<Literal>);
     fn add_learned_lit(&mut self, literal: Literal);
+    fn add_assumption(&mut self, literal: Literal);
 }
 
 pub enum Implementation {
@@ -77,7 +80,7 @@ impl Default for ParamsConfig {
         ParamsConfig {
             restart_run_length: 100,
             max_learned_clauses_default: 500,
-            max_learned_clauses_add: 10
+            max_learned_clauses_add: 10,
         }
     }
 }
@@ -86,28 +89,45 @@ pub fn solve<TStatistics: StatsStorage>(
     cnf: &CNF,
     implementation: Implementation,
     params: ParamsConfig,
+    assumptions: &[Literal],
 ) -> (Solution, TStatistics) {
     match implementation {
-        Implementation::Default => {
-            solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(cnf, params, Default::default())
-        }
-        Implementation::JeroslowWang => {
-            solve_cnf::<State<TStatistics, JeroslowWang>, _, _>(cnf, params, Default::default())
-        }
-        Implementation::BranchVSIDSVar => {
-            solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(cnf, params, Default::default())
-        }
-        Implementation::BranchVSIDSLit => {
-            solve_cnf::<State<TStatistics, ClausalLitVSIDS>, _, _>(cnf, params, Default::default())
-        }
-        Implementation::BranchLowestIndex => {
-            solve_cnf::<State<TStatistics, LowestIndex>, _, _>(cnf, params, Default::default())
-        }
+        Implementation::Default => solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(
+            cnf,
+            params,
+            Default::default(),
+            assumptions,
+        ),
+        Implementation::JeroslowWang => solve_cnf::<State<TStatistics, JeroslowWang>, _, _>(
+            cnf,
+            params,
+            Default::default(),
+            assumptions,
+        ),
+        Implementation::BranchVSIDSVar => solve_cnf::<State<TStatistics, ClausalVarVSIDS>, _, _>(
+            cnf,
+            params,
+            Default::default(),
+            assumptions,
+        ),
+        Implementation::BranchVSIDSLit => solve_cnf::<State<TStatistics, ClausalLitVSIDS>, _, _>(
+            cnf,
+            params,
+            Default::default(),
+            assumptions,
+        ),
+        Implementation::BranchLowestIndex => solve_cnf::<State<TStatistics, LowestIndex>, _, _>(
+            cnf,
+            params,
+            Default::default(),
+            assumptions,
+        ),
         Implementation::BranchRandom { seed } => {
             solve_cnf::<State<TStatistics, RandomChoice<Pcg64Mcg>>, _, _>(
                 cnf,
                 params,
                 RandomChoice::from_u64_seed(seed),
+                assumptions,
             )
         }
     }
@@ -158,6 +178,7 @@ fn solve_cnf<
     cnf: &CNF,
     params: ParamsConfig,
     branching_heuristic: TBranch,
+    assumptions: &[Literal],
 ) -> (Solution, TStats) {
     let max_variable = match cnf.max_variable() {
         Some(max) => max,
@@ -175,6 +196,11 @@ fn solve_cnf<
             let (solution, stats) = if let Some(max_variable) = new_max_variable {
                 let mut state = TState::new(cnf, max_variable, params, branching_heuristic);
 
+                for assumption in assumptions {
+                    if let Some(lit) = preprocess_result.map_old_to_new_literal(*assumption) {
+                        state.add_assumption(lit);
+                    }
+                }
                 let _ = cdcl(&mut state);
                 state.into_result()
             } else {

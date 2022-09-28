@@ -9,6 +9,7 @@ pub(crate) enum PreprocessingResult {
         new_max_variable: Option<Variable>,
         set_variables: Vec<(Variable, VariableValue)>,
         new_to_old_variable_indices: Vec<(usize, usize)>,
+        old_to_new_var_map: Vec<Option<Variable>>,
     },
 }
 
@@ -21,6 +22,23 @@ impl PreprocessingResult {
                 Solution::Satisfiable(self.reverse_map_variables(&states))
             }
             Solution::Unsatisfiable => Solution::Unsatisfiable,
+        }
+    }
+
+    pub(crate) fn map_old_to_new_literal(&self, lit: Literal) -> Option<Literal> {
+        self.map_old_to_new_variable(lit.variable()).map(|var| Literal::new(var, lit.value()))
+    }
+
+    pub(crate) fn map_old_to_new_variable(&self, var: Variable) -> Option<Variable> {
+        // TODO: optimize
+        match self {
+            PreprocessingResult::Unsatisfiable => None,
+            PreprocessingResult::Preprocessed {
+                old_to_new_var_map,
+                ..
+            } => {
+                old_to_new_var_map.get(var.number() as usize).copied().flatten()
+            }
         }
     }
 
@@ -163,14 +181,16 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
 
     let mut old_to_new_mapping = vec![None; (max_variable.number() + 1) as usize];
     for &(new_i, old_i) in &var_index_pairs {
-        old_to_new_mapping[old_i] = Some(new_i);
+        if old_i != 0 {
+            old_to_new_mapping[old_i] = Some(Variable::new(new_i as VariableType));
+        }
     }
 
     for clause in &mut cnf.clauses {
         for literal in &mut clause.literals {
             let new_variable = old_to_new_mapping[literal.variable().number() as usize]
                 .expect("Clause references a variable that is already resolved.");
-            *literal = Literal::new(Variable::new(new_variable as VariableType), literal.value())
+            *literal = Literal::new(new_variable, literal.value())
         }
     }
 
@@ -188,6 +208,7 @@ pub(crate) fn preprocess_cnf(cnf: &mut CNF, max_variable: Variable) -> Preproces
         original_max_variable: max_variable,
         set_variables: set_vars,
         new_max_variable,
+        old_to_new_var_map: old_to_new_mapping
     }
 }
 

@@ -3,7 +3,7 @@ use clap::{ArgEnum, Parser, Subcommand};
 use colored::Colorize;
 use comfy_table::{CellAlignment, Table};
 use nom::Finish;
-use oxisat::cnf::CNF;
+use oxisat::cnf::{CNF, Literal, VariableType};
 use oxisat::dpll::stats::{NoStats, Stats};
 use oxisat::sat::{Solution, VariableValue};
 use oxisat::{cdcl, dpll};
@@ -45,6 +45,11 @@ enum Commands {
         /// Do not calculate detailed stats; CPU time is still measured.
         #[clap(short, long)]
         no_stats: bool,
+
+        /// Assumptions to be applied as first decisions, as a list of clauses, e.g. "1 -2 5 7"
+        #[clap(short, long)]
+        #[clap(allow_hyphen_values = true)]
+        assumptions: Option<String>,
 
         /// 64-bit unsigned integer seed (used only with random branching).
         #[clap(short, long)]
@@ -121,6 +126,7 @@ fn main() -> anyhow::Result<()> {
     let solution = match args.command {
         Commands::Cdcl {
             branching,
+            assumptions,
             restart_run_length,
             max_learned_clauses_default,
             max_learned_clauses_add,
@@ -156,11 +162,33 @@ fn main() -> anyhow::Result<()> {
                     },
                 },
             };
+
+            let mut ass = Vec::new();
+            if let Some(assumption_str) = assumptions {
+                let values: Result<Vec<VariableType>, std::num::ParseIntError> = assumption_str.split_whitespace().map(|lit| lit.parse::<VariableType>()).collect();
+                let values: Vec<VariableType> = values?;
+                for &value in &values {
+                    if value == 0 {
+                        return Err(anyhow!("Assumption cannot use variable 0."));
+                    }
+
+                    if let Some(max_var) = cnf.max_variable() {
+                        if value.abs() > max_var.number().abs() {
+                            return Err(anyhow!("Assumption {value} is not a valid literal (variable index too high)."));
+                        }
+                    } else {
+                        return Err(anyhow!("Cannot use assumptions for problem with no variables."));
+                    }
+                }
+
+                ass.extend(values.iter().map(|x| Literal::from_raw_checked(*x)));
+            }
+
             let (solution, stats) = if !no_stats {
-                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl, params);
+                let (solution, stats) = cdcl::solve::<cdcl::stats::Stats>(&cnf, cdcl_impl, params, &ass);
                 (solution, Some(stats))
             } else {
-                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl_impl, params);
+                let (solution, _) = cdcl::solve::<cdcl::stats::NoStats>(&cnf, cdcl_impl, params, &ass);
                 (solution, None)
             };
 

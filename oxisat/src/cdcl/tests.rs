@@ -41,7 +41,7 @@ mod cdcl {
         clause.add_variable(Variable::new(4), false);
         cnf.add_clause(clause);
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
     }
 
@@ -66,7 +66,7 @@ mod cdcl {
         clause.add_variable(Variable::new(3), true);
         cnf.add_clause(clause);
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
 
         // This is checked to verify pre-processing variable mapping is reversed in case
@@ -104,7 +104,7 @@ mod cdcl {
         clause.add_variable(Variable::new(4), true);
         cnf.add_clause(clause);
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
     }
 
@@ -112,7 +112,7 @@ mod cdcl {
     fn empty_sat<TState: CdclState<NoStats, TBranch>, TBranch: BranchingHeuristic + Default>() {
         let cnf = CNF::new();
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Satisfiable(_)));
     }
 
@@ -125,7 +125,7 @@ mod cdcl {
         let clause = Clause::new();
         cnf.add_clause(clause);
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Unsatisfiable));
     }
 
@@ -144,7 +144,7 @@ mod cdcl {
         clause.add_variable(Variable::new(1), true);
         cnf.add_clause(clause);
 
-        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0;
+        let solution = solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0;
         assert!(matches!(solution, Solution::Unsatisfiable));
     }
 
@@ -153,7 +153,7 @@ mod cdcl {
             let input = include_str!(concat!("../../tests/cnf/cadical/", $name, ".cnf"));
             let (_, dimacs) = dimacs::parse(input).expect("failed to parse");
             let cnf = CNF::from(dimacs);
-            solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default()).0
+            solve_cnf::<TState, _, _>(&cnf, Default::default(), Default::default(), &[]).0
         }};
     }
 
