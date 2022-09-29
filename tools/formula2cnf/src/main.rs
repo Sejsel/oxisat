@@ -74,11 +74,11 @@ fn tseytin_transform(formula: &NNFFormula, mode: TseytinMode) {
     for clause in &clauses {
         for variable in &clause.variables {
             let name = variable.variable_type.get_name();
-            if !id_map.contains_key(&name) {
+            id_map.entry(name).or_insert_with_key(|key| {
                 last_id += 1;
-                println!("c variable {last_id} is {name}");
-            }
-            id_map.insert(name, last_id);
+                println!("c variable {last_id} is {key}");
+                last_id
+            });
         }
     }
     println!("c {} is root variable", root.variable_type.get_name());
