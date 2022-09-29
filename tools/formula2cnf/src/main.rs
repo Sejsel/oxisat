@@ -66,6 +66,10 @@ fn tseytin_transform(formula: &NNFFormula, mode: TseytinMode) {
     let mut clauses = Vec::new();
 
     let root = tseytin_transform_inner(formula, &mut new_variable_index, &mut clauses, mode);
+    let mut root_clause = TseytinClause::empty();
+    root_clause.add_variable(root.clone());
+    clauses.push(root_clause);
+
     println!("c {} new clauses", clauses.len());
 
     let mut id_map: HashMap<String, usize> = HashMap::new();
